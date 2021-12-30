@@ -4,3 +4,4 @@ SkillData/
 .vscode/
 __pycache__/
 *.rar
+*.cpp

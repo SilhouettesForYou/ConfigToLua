@@ -63,6 +63,8 @@ class CSVToLua:
         if len(sequence) == length:
             for i in range(length):
                 array[i + 1] = cast(sequence[i])
+            # array[len(array) + 1] = '_size={}'.format(len(array))
+            # array[len(array) + 1] = '_t=\"s\"'
             return array
         return value
 
@@ -80,6 +82,9 @@ class CSVToLua:
                 l[i + 1] = func(sequence[i], *args)
             elif sequence[i].strip() != '':
                 l[i + 1] = cast(sequence[i])
+                
+        # l[len(l) + 1] = '_size={}'.format(len(l))
+        # l[len(l) + 1] = '_t=\"v\"'
         return l
 
 
@@ -137,7 +142,7 @@ class CSVToLua:
                 elif _type in ['float', 'double']:
                     t[k] = self.check_default(v, float, default)
                 elif _type == 'bool':
-                    t[k] = 'false' if v == 0 or v == 'nan' else 'true'
+                    t[k] = False if v == 0 or v == 'nan' else True
                 elif _match:
                     if _match[0] == 's':
                         t[k] = self.sequence_to_dict(self.check_default(v, str, default), *_match[1])
@@ -147,6 +152,8 @@ class CSVToLua:
                         t[k] = self.vector_to_list(self.check_default(v, str, default), '|', None, self.vector_to_list, *['=', _match[1]])
                     elif _match[0] == 'vs':
                         t[k] = self.vector_to_list(self.check_default(v, str, default), '|', None, self.sequence_to_dict, *_match[1])
+                # else:
+                #     t[k] = self.base_type(_type)
                 else:
                     print(f'`{self.bcolors.FAIL}' + _type + f'{self.bcolors.RESET}` is not processed!')
                     # return
@@ -156,12 +163,16 @@ class CSVToLua:
     def encode(self, obj):
         s = ''
         if isinstance(obj, str):
-            s += '"%s"' % obj.replace(r'"', r'\"')
+            if re.match('_size=[1-9]\d*', obj) or re.match('_t=\"[s|v]\"', obj):
+                s += obj
+            else:
+                s += '"%s"' % obj.replace(r'"', r'\"')
         elif isinstance(obj, bool):
             s += str(obj).lower()
         elif obj is None:
-            pass
-            # s += '{}'
+            # pass
+            # s += '{_size=0,_t="v"}'
+            s += '{}'
         elif isinstance(obj, Number):
             s += str(obj)
         elif isinstance(obj, dict):
@@ -190,23 +201,24 @@ class CSVToLua:
 
 
     def compress_lua(self, obj, name):
-        s = 'local {} = {{\n'.format(name)
+        s = 'local t = {}\n'
 
-        for _, value in obj.items():
-            line = '\t{'
+        for index, value in obj.items():
+            line = 't[{}]={{'.format(index)
             for k, items in value.items():
                 if self.is_need_key:
                     v = self.encode(items)
                     if v != '':
                         line += '{}={},'.format(k, v)
                 else:
-                    line += '{},'.format(self.encode(items))
-            line = line[:-1] + '},\n'
+                    _v = self.encode(items)
+                    if len(_v) != 0: line += '{},'.format(_v)
+            line = line[:-1] + '}\n'
             s += line
         s = s[:-2] + '\n' if s[-2] == ',' else s
 
         # define default table
-        s += '}\n\nlocal __default_table = {'
+        s += '\n\nlocal __default_table = {'
         index = 1
         for key, v in self.types.items():
             _type = self.types[key]['FieldTypeName']
@@ -218,11 +230,12 @@ class CSVToLua:
         # add postfix
         s += '\ndo\n'
         s += '\tlocal base = {__index = __default_table, __newindex = function() error(\"Attempt to modify read-only table\") end}\n'
-        s += '\tfor k, v in pairs({}) do\n'.format(name)
+        s += '\tfor k, v in pairs(t) do\n'
         s += '\t\tsetmetatable(v, base)\n'
         s += '\tend\n'
         s += '\tbase.__metatable = false\n'
         s += 'end\n'
+        s += 'local {} = t'.format(name)
         s += '\nreturn {}\n'.format(name)
 
         return s
@@ -253,7 +266,7 @@ class CSVToLua:
                 heads = set()
                 if data is None: return
                 # load variable type
-                # if data['MainTableName'] != 'DungeonStandardAttrTable': return
+                # if data['MainTableName'] != 'RedDotIndex': return
                 for field in data['Fields']:
                     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
                         self.types[field['FieldName']] = field
