@@ -2,7 +2,7 @@ function _load(src)
     return require(src)
 end
 
-local t = _load('Table-client.SkillTable')
+local t = _load('Table-client.AwardPackTable')
 print(#t)
 
 local sequence = setmetatable({}, {

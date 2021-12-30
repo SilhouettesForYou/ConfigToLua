@@ -23,6 +23,8 @@ class CSVToLua:
         self.JSON = 'Configs'
         self.TABLE = 'CSV'
         self.LUA = './Table-{0}/'
+        self.split_num = 1000
+        self.template_function = ';(function(){}\nend)()'
 
 
     def setConfig(self, pos, is_need_key):
@@ -63,8 +65,8 @@ class CSVToLua:
         if len(sequence) == length:
             for i in range(length):
                 array[i + 1] = cast(sequence[i])
-            # array[len(array) + 1] = '_size={}'.format(len(array))
-            # array[len(array) + 1] = '_t=\"s\"'
+            array[len(array) + 1] = '_size={}'.format(len(array))
+            array[len(array) + 1] = '_t=\"s\"'
             return array
         return value
 
@@ -83,8 +85,8 @@ class CSVToLua:
             elif sequence[i].strip() != '':
                 l[i + 1] = cast(sequence[i])
                 
-        # l[len(l) + 1] = '_size={}'.format(len(l))
-        # l[len(l) + 1] = '_t=\"v\"'
+        l[len(l) + 1] = '_size={}'.format(len(l))
+        l[len(l) + 1] = '_t=\"v\"'
         return l
 
 
@@ -199,12 +201,17 @@ class CSVToLua:
                 elif _match[0] == 'vv' or _match[0] == 'vs': return '{{}}'
         return '{}'
 
+    
+    # def segment(self, index):
+
 
     def compress_lua(self, obj, name):
         s = 'local t = {}\n'
 
         for index, value in obj.items():
-            line = 't[{}]={{'.format(index)
+            line = '  t[{}]={{'.format(index)
+            if index % self.split_num == 1:
+                line = ';(function()\n' + line
             for k, items in value.items():
                 if self.is_need_key:
                     v = self.encode(items)
@@ -214,8 +221,13 @@ class CSVToLua:
                     _v = self.encode(items)
                     if len(_v) != 0: line += '{},'.format(_v)
             line = line[:-1] + '}\n'
+            if index % self.split_num == 0 and index != 1:
+                line += 'end)()\n'# + line
             s += line
+
+
         s = s[:-2] + '\n' if s[-2] == ',' else s
+        s += 'end)()\n'
 
         # define default table
         s += '\n\nlocal __default_table = {'
@@ -266,7 +278,7 @@ class CSVToLua:
                 heads = set()
                 if data is None: return
                 # load variable type
-                # if data['MainTableName'] != 'RedDotIndex': return
+                # if data['MainTableName'] != 'AwardPackTable': return
                 for field in data['Fields']:
                     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
                         self.types[field['FieldName']] = field
