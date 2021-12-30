@@ -9,6 +9,8 @@ class PkgToCpp:
     def __init__(self):
         self.tab = 4 * ' '
         self.double_tab = 8 * ' '
+        self.annotation = '/*{}*/\n'
+
         self.cpp_file = 'lua_register.cpp'
         self.template_file_annotation = self.tab + '// {}\n'
         self.template_classes_annotation = self.tab + '// classes\n'
@@ -18,14 +20,14 @@ class PkgToCpp:
         self.template_unregister_annotation = self.tab + '// unregister {}\n'
 
         self.template_namespace = self.tab + 'sol::table {} = l.create_named_table(\"{}\");\n'
-        self.template_namespace_annotation = self.tab + '// sol::table {} = l.create_named_table(\"{}\"); // place holder\n'
+        self.template_namespace_unused = self.tab + '// sol::table {} = l.create_named_table(\"{}\"); // place holder\n'
         self.template_classes = self.tab + 'auto {}_proxy = {}.new_usertype<{}::{}>(\"{}\");\n'
         self.template_methods_properties = self.tab + '{}_proxy[\"{}\"] = &{}::{}::{};\n'
         self.template_enum = self.tab + '{}.new_enum(\"{}\",\n{}\n' + self.tab + ');\n'
         self.template_enum_member = self.double_tab + '\"{}\", {}::{}::{}, \n'
 
         self.template_unregister_namespace = self.tab + 'sol::table {} = l[\"{}\"];\n'
-        self.template_unregister_namespace_annotation = self.tab + '// sol::table {} = l[\"{}\"]; // place holder\n'
+        self.template_unregister_namespace_unused = self.tab + '// sol::table {} = l[\"{}\"]; // place holder\n'
         self.template_unregister_syntax = self.tab + 'sol::usertype<{}::{}> {}_proxy = {}[\"{}\"];\n' + 4 * ' ' + '{}_proxy.unregister();\n' 
 
         self.tempalte_include = '#include \"lua_register.h\"\n{}\n'
@@ -33,7 +35,8 @@ class PkgToCpp:
         self.template_register = 'void LuaRegister::RegisterLuaFunctions(sol::state& l)\n{{\n{}\n}}\n'
         self.template_unregister = 'void LuaRegister::UnregisterLuaFunctions(sol::state& l)\n{{\n{}\n}}\n'
 
-        self.namespaces_annotation = {}
+        self.unused_namespaces = {}
+        self.unused_classes = {}
     
 
     def filter_include(self, lines):
@@ -73,6 +76,9 @@ class PkgToCpp:
             namespaces.add(namespace)
             classes[class_name] = namespace
             
+            if len(header.classes[class_name]['methods']['private']) == 0 and len(header.classes[class_name]['properties']['public']) == 0 and len(header.classes[class_name]['properties']['private']) == 0:
+                self.unused_classes[class_name] = True
+
             for method in header.classes[class_name]['methods']['private']:
                 output_methods += self.template_methods_properties.format(self.pascal_to_snake(class_name), method['name'], namespace, class_name, method['name'])
 
@@ -88,7 +94,9 @@ class PkgToCpp:
 
         ## classes
         for class_, namespace in classes.items():
-            output_classes += self.template_classes.format(self.pascal_to_snake(class_), self.pascal_to_snake(namespace), namespace, class_, class_)
+            syntax = self.template_classes.format(self.pascal_to_snake(class_), self.pascal_to_snake(namespace), namespace, class_, class_)
+            if class_ in self.unused_classes: output_classes += self.tab + self.annotation.format(syntax[4:-1])
+            else: output_classes += syntax
 
         ## enums
         for enum in header.enums:
@@ -102,13 +110,13 @@ class PkgToCpp:
                     s += enum_str.format(variable['name'], namespace, enum['name'], variable['name'])
                 output_enums += self.template_enum.format(self.pascal_to_snake(namespace), enum['name'], s[:-3])
             else:
-                self.namespaces_annotation[namespace] = True
+                self.unused_namespaces[namespace] = True
 
         # unregister
         output_unregister = self.template_unregister_annotation.format(name)
         ## classes
         for class_, namespace in classes.items():
-            output_unregister += self.template_unregister_syntax.format(
+            syntax = self.template_unregister_syntax.format(
                 namespace,
                 class_,
                 self.pascal_to_snake(class_),
@@ -116,6 +124,8 @@ class PkgToCpp:
                 class_,
                 self.pascal_to_snake(class_)
             )
+            if class_ in self.unused_classes: output_unregister += self.tab + self.annotation.format(syntax[4:-1])
+            else: output_unregister += syntax
         
         output_classes = self.remove_annotation(output_classes, self.template_classes_annotation)
         output_variables = self.remove_annotation(output_variables, self.template_variables_annotation)
@@ -135,14 +145,14 @@ class PkgToCpp:
     def generate_register_namespace(self):
         res = ''
         for namespace in self.namespaces:
-            if namespace in self.namespaces_annotation: res += self.template_namespace_annotation.format(self.pascal_to_snake(namespace), namespace)
+            if namespace in self.unused_namespaces: res += self.template_namespace_unused.format(self.pascal_to_snake(namespace), namespace)
             else: res += self.template_namespace.format(self.pascal_to_snake(namespace), namespace)
         return res
 
     def generate_unregister_namespace(self):
         res = ''
         for namespace in self.namespaces:
-            if namespace in self.namespaces_annotation: res += self.template_unregister_namespace_annotation.format(self.pascal_to_snake(namespace), namespace)
+            if namespace in self.unused_namespaces: res += self.template_unregister_namespace_unused.format(self.pascal_to_snake(namespace), namespace)
             else: res += self.template_unregister_namespace.format(self.pascal_to_snake(namespace), namespace)
         return res
 
