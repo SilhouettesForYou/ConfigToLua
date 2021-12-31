@@ -25,6 +25,7 @@ class CSVToLua:
         self.LUA = './table-{0}/'
         self.split_num = 1000
         self.template_function = ';(function(){}\nend)()'
+        # self.global_string = {}
 
 
     def setConfig(self, pos, is_need_key):
@@ -62,7 +63,7 @@ class CSVToLua:
         parse `Sequence<T>`
         """
         array = {}
-        if value is None or value == '\"\"':
+        if value is None or value == '\"\"' or value.strip() == '':
             array[1] = '_size=0'
             array[2] = '_t=\"s\"'
             return array
@@ -82,7 +83,7 @@ class CSVToLua:
         parse `vector<T>`
         """
         l = {}
-        if value is None or value.strip() == '\"\"':
+        if value is None or value == '\"\"' or value.strip() == '':
             l[1] = '_size=0'
             l[2] = '_t=\"v\"'
             return l
@@ -162,8 +163,6 @@ class CSVToLua:
                         t[k] = self.vector_to_list(self.check_default(v, str, 'string'), '|', None, self.vector_to_list, *['=', _match[1]])
                     elif _match[0] == 'vs':
                         t[k] = self.vector_to_list(self.check_default(v, str, 'string'), '|', None, self.sequence_to_dict, *_match[1])
-                # else:
-                #     t[k] = self.base_type(_type)
                 else:
                     print(f'`{self.bcolors.FAIL}' + _type + f'{self.bcolors.RESET}` is not processed!')
                     # return
@@ -241,7 +240,7 @@ class CSVToLua:
         # define default table
         s += '\n\nlocal __default_table = {'
         index = 1
-        for key in self.heads:
+        for key in sorted(self.heads.items(), key = lambda item : item[0]):
             _type = self.types[key[1]]['FieldTypeName']
             # s += '{}={},'.format(key, index)
             default_value = self.base_type(_type)
@@ -289,7 +288,7 @@ class CSVToLua:
                 self.heads = {}
                 if data is None: return
                 # load variable type
-                # if data['MainTableName'] != 'EquipTable': return
+                # if data['MainTableName'] != 'RedDotCheckTable': return
                 for field in data['Fields']:
                     # config for server or client
                     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
@@ -309,8 +308,8 @@ class CSVToLua:
                     columns = list(set(data.columns.tolist()) - set(self.heads.values()))
                     data = data.drop(columns=columns)
                     data = data.dropna(axis=0, how='all')
-                    self.heads = sorted(self.heads.items(), key = lambda item : item[0])
-                    data = data[[x[1] for x in self.heads]]
+                    _heads = sorted(self.heads.items(), key = lambda item : item[0])
+                    data = data[[x[1] for x in _heads]]
                     
                     lua_raw_data = data.to_dict('index')
                     table = self.iter_csv_recursive(lua_raw_data)
