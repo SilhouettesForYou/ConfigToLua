@@ -225,9 +225,8 @@ class CSVToLua:
                 line += 'end)()\n'# + line
             s += line
 
-
         s = s[:-2] + '\n' if s[-2] == ',' else s
-        s += 'end)()\n'
+        if len(obj) != 0: s += 'end)()\n'
 
         # define default table
         s += '\n\nlocal __default_table = {'
@@ -278,7 +277,7 @@ class CSVToLua:
                 heads = set()
                 if data is None: return
                 # load variable type
-                # if data['MainTableName'] != 'AwardPackTable': return
+                # if data['MainTableName'] != 'DungeonEntityAttrTable': return
                 for field in data['Fields']:
                     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
                         self.types[field['FieldName']] = field
