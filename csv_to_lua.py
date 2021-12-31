@@ -8,7 +8,7 @@ import concurrent.futures
 # import subprocess
 from slpp import slpp as lua
 from numbers import Number
-from compress_lua_table import CompressLuaTable as compress
+# from compress_lua_table import CompressLuaTable as compress
 
 
 class CSVToLua:
@@ -40,7 +40,7 @@ class CSVToLua:
 
     def check_default(self, _v, cast, _type):
         """
-        设置字段默认值
+        set default value
         """
         def is_nan(__v):
             if type(__v) == float:
@@ -50,7 +50,7 @@ class CSVToLua:
             return False
         def filter_escape(__v):
             if cast == str and type(__v) == str:
-                # 转义表中的转义符包括`'`、`\`
+                # include `'`、`\`
                 return __v.translate({39 : '\\\'', 92 : '\\\\'})
             return __v
         
@@ -59,7 +59,7 @@ class CSVToLua:
 
     def sequence_to_dict(self, value, partten, length, cast):
         """
-        解析Sequence<T>类型的数据结构
+        parse `Sequence<T>`
         """
         array = {}
         if value is None or value == '\"\"':
@@ -79,7 +79,7 @@ class CSVToLua:
 
     def vector_to_list(self, value, partten, cast, func=None, *args):
         """
-        解析vector<T>类型的数据结构
+        parse `vector<T>`
         """
         l = {}
         if value is None or value.strip() == '\"\"':
@@ -121,7 +121,7 @@ class CSVToLua:
 
     def regex_type(self, str):
         """
-        正则匹配自定义的数据结构类型，用于转换成lua中的table
+        regex customized data structure.
         """
         if re.match('Sequence<[a-z]*, [1-9]\d*>$', str):
             return self.arg_type('s', str)
@@ -136,7 +136,7 @@ class CSVToLua:
 
     def iter_csv_recursive(self, d):
         """
-        递归遍历原始表数据，并解析自定义数据结构如：vector<int>等
+        parse customized data structure. e.g. vector<Sequence<int>>, ...
         """
         t = {}
         for k, v in d.items():
@@ -209,15 +209,14 @@ class CSVToLua:
                 elif _match[0] == 'vv' or _match[0] == 'vs': return '{{}}'
         return '{}'
 
-    
-    # def segment(self, index):
-
 
     def compress_lua(self, obj, name):
         s = 'local t = {}\n'
 
         for index, value in obj.items():
             line = '  t[{}]={{'.format(index)
+            # add splitted function for <issue#luajit2.1限制了一个function中constant的数量为65535>
+            # [LuaJIT and large tables](http://lua-users.org/lists/lua-l/2010-03/msg00237.html)
             if index % self.split_num == 1:
                 line = ';(function()\n' + line
             for k, items in value.items():
@@ -229,8 +228,11 @@ class CSVToLua:
                     _v = self.encode(items)
                     if len(_v) != 0: line += '{},'.format(_v)
             line = line[:-1] + '}\n'
+
+            # add splitted function for <issue#luajit2.1限制了一个function中constant的数量为65535>
             if index % self.split_num == 0 and index != 1:
                 line += 'end)()\n'# + line
+
             s += line
 
         s = s[:-2] + '\n' if s[-2] == ',' else s
@@ -269,6 +271,7 @@ class CSVToLua:
             self.json_dir = os.path.join(dir_config.split('#')[1], self.JSON)
             works = os.listdir(self.json_dir)
             
+            # thread attemption
             # with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             #     futures = [executor.submit(self._csv_to_lua, file=work) for work in works]
             #     for future in concurrent.futures.as_completed(futures):
@@ -288,6 +291,7 @@ class CSVToLua:
                 # load variable type
                 # if data['MainTableName'] != 'EquipTable': return
                 for field in data['Fields']:
+                    # config for server or client
                     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
                         self.types[field['FieldName']] = field
                         self.heads[field[self.pos_id]]= field['FieldName']
@@ -300,6 +304,7 @@ class CSVToLua:
                         # continue
                         os.remove(file_path)
                             
+                    # header adaptation
                     data = pd.read_csv(os.path.join(self._dir, self.TABLE, name)).drop([0])
                     columns = list(set(data.columns.tolist()) - set(self.heads.values()))
                     data = data.drop(columns=columns)
@@ -318,7 +323,7 @@ class CSVToLua:
                         print(f'{self.bcolors.FAIL} error: ' + name + f'{self.bcolors.RESET}')
                         traceback.print_exc()
             process(data)
-            process(data['Children'][0] if data['Children'] else None)
+            process(data['Children'][0] if data['Children'] else None) # process child table
                 
 
 CSVToLua = CSVToLua()
