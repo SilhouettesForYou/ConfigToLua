@@ -6,7 +6,7 @@ import traceback
 import re
 import concurrent.futures
 # import subprocess
-from slpp import slpp as lua
+# from slpp import slpp as lua
 from numbers import Number
 # from compress_lua_table import CompressLuaTable as compress
 
@@ -25,7 +25,8 @@ class CSVToLua:
         self.LUA = './table-{0}/'
         self.split_num = 1000
         self.template_function = ';(function(){}\nend)()'
-        # self.global_string = {}
+        self.string_index = 0
+        self.global_string = {}
 
 
     def setConfig(self, pos, is_need_key):
@@ -37,6 +38,11 @@ class CSVToLua:
             os.mkdir(self.LUA.format(self.pos))
 
         self.is_need_key = is_need_key
+
+
+    def generate_index(self):
+        self.string_index += 1
+        return self.string_index
 
 
     def check_default(self, _v, cast, _type):
@@ -58,23 +64,22 @@ class CSVToLua:
         return self.base_type(_type) if is_nan(_v) else cast(filter_escape(_v))
 
 
-    def sequence_to_dict(self, value, partten, length, cast):
+    def sequence_to_dict(self, value, partten, length, cast, default):
         """
         parse `Sequence<T>`
         """
         array = {}
-        if value is None or value == '\"\"' or value.strip() == '':
-            array[1] = '_size=0'
-            array[2] = '_t=\"s\"'
-            return array
 
         sequence = value.split(partten)
-        if len(sequence) == length:
-            for i in range(length):
+        for i in range(length):
+            try:
                 array[i + 1] = cast(sequence[i])
-            array[len(array) + 1] = '_size={}'.format(len(array))
-            array[len(array) + 1] = '_t=\"s\"'
-            return array
+            except Exception as e:
+                array[i + 1] = default
+            
+        array[len(array) + 1] = '_size={}'.format(len(array))
+        array[len(array) + 1] = '_t=\"s\"'
+        return array
         return value
 
 
@@ -106,17 +111,17 @@ class CSVToLua:
         string_pattern = re.compile('[1-9]\d*|string').findall(_str)
         bool_pattern = re.compile('[1-9]\d*|bool').findall(_str)
         if len(int_pattern) == 2:
-            return index, ['=', int(int_pattern[1]), int]
+            return index, ['=', int(int_pattern[1]), int, 0]
         elif len(float_pattern) == 2:
-            return index, ['=', int(float_pattern[1]), float]
+            return index, ['=', int(float_pattern[1]), float, 0.0]
         elif len(string_pattern) == 2:
-            return index, ['=', int(string_pattern[1]), str]
+            return index, ['=', int(string_pattern[1]), str, '']
         elif len(bool_pattern) == 2:
-            return index, ['=', int(bool_pattern[1]), bool]
-        elif int_pattern: return index, int
-        elif float_pattern: return index, float
-        elif string_pattern: return index, str
-        elif bool_pattern: return index, bool
+            return index, ['=', int(bool_pattern[1]), bool, False]
+        elif int_pattern: return index, int, 0
+        elif float_pattern: return index, float, 0.0
+        elif string_pattern: return index, str, ''
+        elif bool_pattern: return index, bool, False
         return _str
 
 
@@ -147,7 +152,9 @@ class CSVToLua:
                 _type = self.types[k]['FieldTypeName']
                 _match = self.regex_type(_type)
                 if _type == 'string':
-                    t[k] = self.check_default(v, str, _type)
+                    text = self.check_default(v, str, _type)
+                    t[k] = text
+                    # self.global_string[self.generate_index()] = text
                 elif _type in ['int', 'uint', 'long long']:
                     t[k] = self.check_default(v, int, _type)
                 elif _type in ['float', 'double']:
@@ -261,6 +268,15 @@ class CSVToLua:
 
         return s
 
+    def save_global_string(self):
+        with open(self.LUA.format(self.pos) + 'GlobalString.lua', 'w', encoding='utf-8') as w:
+            w.write('str = {}\n')
+            lines = []
+            for idx, s in self.global_string.items():
+                lines.append('str[{}] = "{}"'.format(idx, s))
+            w.write('\n'.join(lines))
+            w.write('\nreturn str')
+
 
     def csv_to_lua(self):
         with open('.config', 'r') as f:
@@ -288,7 +304,7 @@ class CSVToLua:
                 self.heads = {}
                 if data is None: return
                 # load variable type
-                # if data['MainTableName'] != 'RedDotCheckTable': return
+                # if data['MainTableName'] != 'OrnamentBarterTable': return
                 for field in data['Fields']:
                     # config for server or client
                     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
@@ -318,6 +334,7 @@ class CSVToLua:
                         if len(name.split('/')) == 2: name = name.split('/')[1]
                         with open(file_path, 'w', encoding='utf-8') as w:
                             w.write(self.compress_lua(table, name[:-4]))
+                        # self.save_global_string()
                     except Exception as e:
                         print(f'{self.bcolors.FAIL} error: ' + name + f'{self.bcolors.RESET}')
                         traceback.print_exc()
