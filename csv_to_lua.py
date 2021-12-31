@@ -22,20 +22,23 @@ class CSVToLua:
     def __init__(self):
         self.JSON = 'Configs'
         self.TABLE = 'CSV'
-        self.LUA = './Table-{0}/'
+        self.LUA = './table-{0}/'
         self.split_num = 1000
         self.template_function = ';(function(){}\nend)()'
 
 
     def setConfig(self, pos, is_need_key):
         self.pos = pos
+        self.pos_id = 'ClientPosID'
+        if self.pos == 'server': self.pos_id = 'ServerPosID'
+        elif self.pos == 'client': self.pos_id = 'ClientPosID'
         if not os.path.exists(self.LUA.format(self.pos)):
             os.mkdir(self.LUA.format(self.pos))
 
         self.is_need_key = is_need_key
 
 
-    def check_default(self, _v, cast, default):
+    def check_default(self, _v, cast, _type):
         """
         设置字段默认值
         """
@@ -51,16 +54,19 @@ class CSVToLua:
                 return __v.translate({39 : '\\\'', 92 : '\\\\'})
             return __v
         
-        return default if is_nan(_v) else cast(filter_escape(_v))
+        return self.base_type(_type) if is_nan(_v) else cast(filter_escape(_v))
 
 
     def sequence_to_dict(self, value, partten, length, cast):
         """
         解析Sequence<T>类型的数据结构
         """
-        if value is None or value == '' :
-            return value
         array = {}
+        if value is None or value == '\"\"':
+            array[1] = '_size=0'
+            array[2] = '_t=\"s\"'
+            return array
+
         sequence = value.split(partten)
         if len(sequence) == length:
             for i in range(length):
@@ -75,9 +81,12 @@ class CSVToLua:
         """
         解析vector<T>类型的数据结构
         """
-        if value is None or value.strip() == '':
-            return value
         l = {}
+        if value is None or value.strip() == '\"\"':
+            l[1] = '_size=0'
+            l[2] = '_t=\"v\"'
+            return l
+        
         sequence = value.split(partten)
         for i in range(len(sequence)):
             if func is not None:
@@ -135,25 +144,24 @@ class CSVToLua:
                 t[k] = self.iter_csv_recursive(v)
             else:
                 _type = self.types[k]['FieldTypeName']
-                default = self.types[k]['DefaultValue']
                 _match = self.regex_type(_type)
                 if _type == 'string':
-                    t[k] = self.check_default(v, str, default)
+                    t[k] = self.check_default(v, str, _type)
                 elif _type in ['int', 'uint', 'long long']:
-                    t[k] = self.check_default(v, int, default)
+                    t[k] = self.check_default(v, int, _type)
                 elif _type in ['float', 'double']:
-                    t[k] = self.check_default(v, float, default)
+                    t[k] = self.check_default(v, float, _type)
                 elif _type == 'bool':
                     t[k] = False if v == 0 or v == 'nan' else True
                 elif _match:
                     if _match[0] == 's':
-                        t[k] = self.sequence_to_dict(self.check_default(v, str, default), *_match[1])
+                        t[k] = self.sequence_to_dict(self.check_default(v, str, 'string'), *_match[1])
                     elif _match[0] == 'v':
-                        t[k] = self.vector_to_list(self.check_default(v, str, default), '|', _match[1])
+                        t[k] = self.vector_to_list(self.check_default(v, str, 'string'), '|', _match[1])
                     elif _match[0] == 'vv':
-                        t[k] = self.vector_to_list(self.check_default(v, str, default), '|', None, self.vector_to_list, *['=', _match[1]])
+                        t[k] = self.vector_to_list(self.check_default(v, str, 'string'), '|', None, self.vector_to_list, *['=', _match[1]])
                     elif _match[0] == 'vs':
-                        t[k] = self.vector_to_list(self.check_default(v, str, default), '|', None, self.sequence_to_dict, *_match[1])
+                        t[k] = self.vector_to_list(self.check_default(v, str, 'string'), '|', None, self.sequence_to_dict, *_match[1])
                 # else:
                 #     t[k] = self.base_type(_type)
                 else:
@@ -165,10 +173,10 @@ class CSVToLua:
     def encode(self, obj):
         s = ''
         if isinstance(obj, str):
-            if re.match('_size=[1-9]\d*', obj) or re.match('_t=\"[s|v]\"', obj):
+            if re.match('_size=[0-9]\d*', obj) or re.match('_t=\"[s|v]\"', obj):
                 s += obj
             else:
-                s += '"%s"' % obj.replace(r'"', r'\"')
+                s += '"{}"'.format(obj.replace(r'"', r'\"'))
         elif isinstance(obj, bool):
             s += str(obj).lower()
         elif obj is None:
@@ -187,7 +195,7 @@ class CSVToLua:
     
     def base_type(self, _type):
         if _type == 'string':
-            return '\"\"'
+            return ''
         elif _type in ['int', 'uint', 'long long']:
             return 0
         elif _type in ['float', 'double']:
@@ -231,10 +239,11 @@ class CSVToLua:
         # define default table
         s += '\n\nlocal __default_table = {'
         index = 1
-        for key, v in self.types.items():
-            _type = self.types[key]['FieldTypeName']
+        for key in self.heads:
+            _type = self.types[key[1]]['FieldTypeName']
             # s += '{}={},'.format(key, index)
-            s += '{}={},'.format(key, self.base_type(_type))
+            default_value = self.base_type(_type)
+            s += '{}={},'.format(key[1], default_value if default_value != '' else '\"\"')
             index += 1
         s = (s[:-1] if s[-1] == ',' else s) + '}\n'
 
@@ -274,14 +283,14 @@ class CSVToLua:
             data = json.load(file)
             def process(data):
                 self.types = {}
-                heads = set()
+                self.heads = {}
                 if data is None: return
                 # load variable type
-                # if data['MainTableName'] != 'DungeonEntityAttrTable': return
+                # if data['MainTableName'] != 'EquipTable': return
                 for field in data['Fields']:
                     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
                         self.types[field['FieldName']] = field
-                        heads.add(field['FieldName'])
+                        self.heads[field[self.pos_id]]= field['FieldName']
 
                 for item in data['TableLocations']:
                     name = item['ExcelPath']
@@ -292,10 +301,12 @@ class CSVToLua:
                         os.remove(file_path)
                             
                     data = pd.read_csv(os.path.join(self._dir, self.TABLE, name)).drop([0])
-                    columns = list(set(data.columns.tolist()) - heads)
-                            
+                    columns = list(set(data.columns.tolist()) - set(self.heads.values()))
                     data = data.drop(columns=columns)
                     data = data.dropna(axis=0, how='all')
+                    self.heads = sorted(self.heads.items(), key = lambda item : item[0])
+                    data = data[[x[1] for x in self.heads]]
+                    
                     lua_raw_data = data.to_dict('index')
                     table = self.iter_csv_recursive(lua_raw_data)
                     try:
