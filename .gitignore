@@ -1,5 +1,7 @@
 Table-client/
+table-client/
 Table-server/
+table-server/
 SkillData/
 .vscode/
 __pycache__/
