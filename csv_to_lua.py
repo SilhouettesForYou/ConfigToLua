@@ -29,7 +29,7 @@ class CSVToLua:
         self.global_string = {}
 
 
-    def setConfig(self, pos, is_need_key):
+    def setConfig(self, pos, is_need_key=False, is_need_index=False):
         self.pos = pos
         self.pos_id = 'ClientPosID'
         if self.pos == 'server': self.pos_id = 'ServerPosID'
@@ -38,6 +38,7 @@ class CSVToLua:
             os.mkdir(self.LUA.format(self.pos))
 
         self.is_need_key = is_need_key
+        self.is_need_index = is_need_index
 
 
     def generate_index(self):
@@ -225,14 +226,16 @@ class CSVToLua:
             # [LuaJIT and large tables](http://lua-users.org/lists/lua-l/2010-03/msg00237.html)
             if index % self.split_num == 1:
                 line = ';(function()\n' + line
+            
             for k, items in value.items():
+                v = self.encode(items)
                 if self.is_need_key:
-                    v = self.encode(items)
                     if v != '':
                         line += '{}={},'.format(k, v)
+                elif self.is_need_index:
+                    if len(v) != 0: line += '[{}]={},'.format(self.types[k][self.pos_id], v)
                 else:
-                    _v = self.encode(items)
-                    if len(_v) != 0: line += '{},'.format(_v)
+                    if len(v) != 0: line += '{},'.format(v)
             line = line[:-1] + '}\n'
 
             # add splitted function for <issue#luajit2.1限制了一个function中constant的数量为65535>

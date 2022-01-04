@@ -17,32 +17,35 @@ def main(argv):
     sys.setrecursionlimit(10000)
     args = argv[1:]
     try:
-        opts, args = getopt.getopt(args, 'xcaf:kp', ['xml', 'csv', 'all', 'for=', 'key', 'pkg'])
+        opts, args = getopt.getopt(args, 'xcaf:kpi', ['xml', 'csv', 'all', 'for=', 'key', 'pkg', 'index'])
     except getopt.GetoptError as err:
         print(err)
         usage()
         sys.exit(2)
     for_server_or_client = 'client'
     is_key = False
+    is_index = False
     for o, a in opts:
         if o in ('-h', '--help'):
             usage()
             sys.exit(1)
         if o in ('-f', '--for'):
             for_server_or_client = a
-            csv.setConfig(for_server_or_client, is_key)
+            csv.setConfig(for_server_or_client)
         elif o in ('-k', '--key'):
             is_key = True
-            csv.setConfig(for_server_or_client, is_key)
+        elif o in ('-i', '--index'):
+            is_index = True
         elif o in ('-x', '--xml'):
             xml.xml_to_lua()
         elif o in ('-c', '--csv'):
+            csv.setConfig(for_server_or_client, is_need_key=is_key, is_need_index=is_index)
             csv.csv_to_lua()
         elif o in ('-p', '--pkg'):
             p2c.pkg_to_cpp()
         elif o in ('-a', '--all'):
             xml.xml_to_lua()
-            csv.setConfig(for_server_or_client, is_key)
+            csv.setConfig(for_server_or_client, is_need_key=is_key, is_need_index=is_index)
             csv.csv_to_lua()
         else:
             sys.exit(3)
