@@ -322,15 +322,16 @@ class CSVToLua:
             default_value = self.base_type(_type)
             s += '{}={},'.format(key[1], default_value if default_value != '' else '\"\"')
             index += 1
-        s = (s[:-1] if s[-1] == ',' else s) + '}\n'
+        s = (s[:-1] if s[-1] == ',' else s) + '}\n' ### generate empty tabel possibly
 
         # define table type enum for server
         if self.pos == 'server':
             s += '\n\nlocal __table_type_enum = {'
             for key in sorted(self.heads.items(), key = lambda item : item[0]):
+                _pos = self.types[key[1]][self.pos_id]
                 enum = self.type_map_compile(self.types[key[1]]['FieldTypeName'])
-                s += '{}={},'.format(key[1], enum)
-            s = s[:-1] + '}\n'
+                s += '[{}]={},'.format(_pos, enum)
+            s = (s[:-1] if s[-1] == ',' else s) + '}\n' ### generate empty tabel possibly
 
 
         # add postfix
@@ -342,7 +343,7 @@ class CSVToLua:
         s += '\tbase.__metatable = false\n'
         s += 'end\n'
         if self.pos == 'server':
-            s += 'local {} = {{header=__table_type_enum, data=t}}'.format(name)
+            s += 'local {} = {{head=__table_type_enum, data=t}}'.format(name)
         else:
             s += 'local {} = t'.format(name)
         s += '\nreturn {}\n'.format(name)
