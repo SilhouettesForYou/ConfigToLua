@@ -39,7 +39,8 @@ def main(argv):
             is_index = True
         elif o in ('-s', '--string'):
             is_string = True
-            if a is not None and a == 'only': csv.set_writ_flag(2)
+            if a == 'only': csv.set_writ_flag(2)
+            elif a == 'all': csv.set_writ_flag(1)
         elif o in ('-x', '--xml'):
             xml.xml_to_lua()
         elif o in ('-c', '--csv'):
