@@ -195,7 +195,7 @@ class CSVToLua:
     
     def filter_string(self, str):
         if str == '': return 'blank'
-        return str
+        return str.translate({34 : '\\"'})
 
 
     def iter_csv_recursive(self, d):
@@ -340,7 +340,7 @@ class CSVToLua:
         s += '\tfor k, v in pairs(t) do\n'
         s += '\t\tsetmetatable(v, base)\n'
         s += '\tend\n'
-        s += '\tbase.__metatable = false\n'
+        # s += '\tbase.__metatable = false\n'
         s += 'end\n'
         if self.pos == 'server':
             s += 'local {} = {{head=__table_type_enum, data=t}}'.format(name)
