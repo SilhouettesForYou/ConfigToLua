@@ -17,7 +17,7 @@ def main(argv):
     sys.setrecursionlimit(10000)
     args = argv[1:]
     try:
-        opts, args = getopt.getopt(args, 'xcaf:kpi', ['xml', 'csv', 'all', 'for=', 'key', 'pkg', 'index'])
+        opts, args = getopt.getopt(args, 'xcaf:kpis:', ['xml', 'csv', 'all', 'for=', 'key', 'pkg', 'index', 'string='])
     except getopt.GetoptError as err:
         print(err)
         usage()
@@ -25,6 +25,7 @@ def main(argv):
     for_server_or_client = 'client'
     is_key = False
     is_index = False
+    is_string = False
     for o, a in opts:
         if o in ('-h', '--help'):
             usage()
@@ -36,16 +37,19 @@ def main(argv):
             is_key = True
         elif o in ('-i', '--index'):
             is_index = True
+        elif o in ('-s', '--string'):
+            is_string = True
+            if a is not None and a == 'only': csv.set_writ_flag(2)
         elif o in ('-x', '--xml'):
             xml.xml_to_lua()
         elif o in ('-c', '--csv'):
-            csv.setConfig(for_server_or_client, is_need_key=is_key, is_need_index=is_index)
+            csv.setConfig(for_server_or_client, is_need_key=is_key, is_need_index=is_index, is_save_string=is_string)
             csv.csv_to_lua()
         elif o in ('-p', '--pkg'):
             p2c.pkg_to_cpp()
         elif o in ('-a', '--all'):
             xml.xml_to_lua()
-            csv.setConfig(for_server_or_client, is_need_key=is_key, is_need_index=is_index)
+            csv.setConfig(for_server_or_client, is_need_key=is_key, is_need_index=is_index, is_save_string=is_string)
             csv.csv_to_lua()
         else:
             sys.exit(3)

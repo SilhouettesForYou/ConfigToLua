@@ -19,17 +19,66 @@ class CSVToLua:
         FAIL = '\033[91m' #RED
         RESET = '\033[0m' #RESET COLOR
 
+
+    # class TableTypeEnum:
+    #     TYPES = {
+    #         'NONE' : -1,
+    #         'CHAR' : 0,
+    #         'VECTOR_CHAR' : 100,
+    #         'SEQUENCE_CHAR' : 200,
+    #         'VECTOR_SEQUENCE_CHAR' : 300,
+    #         'VECTOR_VECTOR_CHAR' : 400,
+    #         'BOOL' : 1,
+    #         'VECTOR_BOOL' : 101,
+    #         'SEQUENCE_BOOL' : 201,
+    #         'VECTOR_SEQUENCE_BOOL' : 301,
+    #         'VECTOR_VECTOR_BOOL' : 401,
+    #         'INT' : 2,
+    #         'VECTOR_INT' : 102,
+    #         'SEQUENCE_INT' : 202,
+    #         'VECTOR_SEQUENCE_INT' : 302,
+    #         'VECTOR_VECTOR_INT' : 402,
+    #         'UINT' : 3,
+    #         'VECTOR_UINT' : 103,
+    #         'SEQUENCE_UINT' : 203,
+    #         'VECTOR_SEQUENCE_UINT' : 303,
+    #         'VECTOR_VECTOR_UINT' : 403,
+    #         'FLOAT' : 4,
+    #         'VECTOR_FLOAT' : 104,
+    #         'SEQUENCE_FLOAT' : 204,
+    #         'VECTOR_SEQUENCE_FLOAT' : 304,
+    #         'VECTOR_VECTOR_FLOAT' : 404,
+    #         'DOUBLE' : 5,
+    #         'VECTOR_DOUBLE' : 105,
+    #         'SEQUENCE_DOUBLE' : 205,
+    #         'VECTOR_SEQUENCE_DOUBLE' : 305,
+    #         'VECTOR_VECTOR_DOUBLE' : 405,
+    #         'LONGLONG' : 6,
+    #         'VECTOR_LONGLONG' : 106,
+    #         'SEQUENCE_LONGLONG' : 206,
+    #         'VECTOR_SEQUENCE_LONGLONG' : 306,
+    #         'VECTOR_VECTOR_LONGLONG' : 406,
+    #         'STRING' : 7,
+    #         'VECTOR_STRING' : 107,
+    #         'SEQUENCE_STRING' : 207,
+    #         'VECTOR_SEQUENCE_STRING' : 307,
+    #         'VECTOR_VECTOR_STRING' : 407,
+    #     }
+    
+
     def __init__(self):
         self.JSON = 'Configs'
         self.TABLE = 'CSV'
         self.LUA = './table-{0}/'
+        self.REPEAT_KEY_PREFIX = '__rt'
         self.split_num = 1000
         self.template_function = ';(function(){}\nend)()'
         self.string_index = 0
         self.global_string = {}
+        self.write_flag = 1
 
 
-    def setConfig(self, pos, is_need_key=False, is_need_index=False):
+    def setConfig(self, pos, is_need_key=False, is_need_index=False, is_save_string=False):
         self.pos = pos
         self.pos_id = 'ClientPosID'
         if self.pos == 'server': self.pos_id = 'ServerPosID'
@@ -39,6 +88,10 @@ class CSVToLua:
 
         self.is_need_key = is_need_key
         self.is_need_index = is_need_index
+        self.is_save_string = is_save_string
+
+    def set_writ_flag(self, flag):
+        self.write_flag &= flag
 
 
     def generate_index(self):
@@ -81,7 +134,6 @@ class CSVToLua:
         array[len(array) + 1] = '_size={}'.format(len(array))
         array[len(array) + 1] = '_t=\"s\"'
         return array
-        return value
 
 
     def vector_to_list(self, value, partten, cast, func=None, *args):
@@ -140,6 +192,11 @@ class CSVToLua:
             return self.arg_type('vs', str)
         return str
 
+    
+    def filter_string(self, str):
+        if str == '': return 'blank'
+        return str
+
 
     def iter_csv_recursive(self, d):
         """
@@ -155,7 +212,7 @@ class CSVToLua:
                 if _type == 'string':
                     text = self.check_default(v, str, _type)
                     t[k] = text
-                    # self.global_string[self.generate_index()] = text
+                    if self.is_save_string: self.global_string[self.generate_index()] = self.filter_string(text)
                 elif _type in ['int', 'uint', 'long long']:
                     t[k] = self.check_default(v, int, _type)
                 elif _type in ['float', 'double']:
@@ -245,7 +302,7 @@ class CSVToLua:
             s += line
 
         s = s[:-2] + '\n' if s[-2] == ',' else s
-        if len(obj) != 0: s += 'end)()\n'
+        if len(obj) != 0 and index % self.split_num != 0: s += 'end)()\n'
 
         # define default table
         s += '\n\nlocal __default_table = {'
@@ -257,6 +314,10 @@ class CSVToLua:
             s += '{}={},'.format(key[1], default_value if default_value != '' else '\"\"')
             index += 1
         s = (s[:-1] if s[-1] == ',' else s) + '}\n'
+
+        # define table type enum for server
+        if self.pos == 'server':
+
 
         # add postfix
         s += '\ndo\n'
@@ -271,14 +332,46 @@ class CSVToLua:
 
         return s
 
+
     def save_global_string(self):
+        def revert_dict(d):
+            result = {}
+            for k in d:
+                if d[k] not in result:
+                    result[d[k]] = set()
+                result[d[k]].add(k)
+            return {k: result[k] if len(result[k]) > 1 else result[k].pop() for k in result}
+            
+        tab = 4 * ' '
+        reversed_globel_string = revert_dict(self.global_string)
         with open(self.LUA.format(self.pos) + 'GlobalString.lua', 'w', encoding='utf-8') as w:
-            w.write('str = {}\n')
+            ## count repeat items
+            w.write('local {} = {{\n'.format(self.REPEAT_KEY_PREFIX))
+            lines = []
+            repeats = {}
+            index = 1
+            for v, indices in reversed_globel_string.items():
+                if isinstance(indices, set) and len(indices) > 1:
+                    repeats[v] = index
+                    lines.append('{}"{}"'.format(tab, v))
+                    index += 1
+            w.write(',\n'.join(lines))
+            w.write('\n}\n')
+
+            ## all of strings
+            w.write('local str = {\n')
             lines = []
             for idx, s in self.global_string.items():
-                lines.append('str[{}] = "{}"'.format(idx, s))
-            w.write('\n'.join(lines))
-            w.write('\nreturn str')
+                if s in repeats:
+                    lines.append('{}{}[{}]'.format(tab, self.REPEAT_KEY_PREFIX, repeats[s]))
+                else:
+                    lines.append('{}"{}"'.format(tab, s))
+            w.write(',\n'.join(lines))
+            w.write('\n}\nreturn str')
+
+
+    def get_global_string(self):
+        return self.global_string
 
 
     def csv_to_lua(self):
@@ -296,6 +389,7 @@ class CSVToLua:
             #         print(future.result())
             for work in works:
                 self._csv_to_lua(work)
+            if self.is_save_string: self.save_global_string()
 
 
     def _csv_to_lua(self, file):
@@ -307,7 +401,7 @@ class CSVToLua:
                 self.heads = {}
                 if data is None: return
                 # load variable type
-                # if data['MainTableName'] != 'OrnamentBarterTable': return
+                # if data['MainTableName'] != 'AttraddRecomTable': return
                 for field in data['Fields']:
                     # config for server or client
                     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
@@ -318,7 +412,7 @@ class CSVToLua:
                     name = item['ExcelPath']
                             
                     file_path = self.LUA.format(self.pos) + os.path.basename(name).replace('.csv', '.lua')
-                    if os.path.exists(file_path):
+                    if os.path.exists(file_path) and self.write_flag & 1:
                         # continue
                         os.remove(file_path)
                             
@@ -335,15 +429,15 @@ class CSVToLua:
                     try:
                         print(f'processing {self.bcolors.OK}' + name + f'{self.bcolors.RESET} ...')
                         if len(name.split('/')) == 2: name = name.split('/')[1]
-                        with open(file_path, 'w', encoding='utf-8') as w:
-                            w.write(self.compress_lua(table, name[:-4]))
-                        # self.save_global_string()
+                        if self.write_flag & 1:
+                            with open(file_path, 'w', encoding='utf-8') as w:
+                                w.write(self.compress_lua(table, name[:-4]))
                     except Exception as e:
                         print(f'{self.bcolors.FAIL} error: ' + name + f'{self.bcolors.RESET}')
                         traceback.print_exc()
             process(data)
             process(data['Children'][0] if data['Children'] else None) # process child table
-                
+
 
 CSVToLua = CSVToLua()
 
