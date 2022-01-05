@@ -8,6 +8,14 @@ import concurrent.futures
 # import subprocess
 # from slpp import slpp as lua
 from numbers import Number
+from rich.progress import track
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 # from compress_lua_table import CompressLuaTable as compress
 
 
@@ -429,9 +437,24 @@ class CSVToLua:
             #     futures = [executor.submit(self._csv_to_lua, file=work) for work in works]
             #     for future in concurrent.futures.as_completed(futures):
             #         print(future.result())
-            for work in works:
-                self._csv_to_lua(work)
-            if self.is_save_string: self.save_global_string()
+            progress = Progress(
+                TimeElapsedColumn(),
+                BarColumn(),
+                TextColumn('{task.description}')
+            )
+
+            task_id = progress.add_task("", total=len(works))
+            with progress:
+                for work in works:
+                    descr = '[bold #FFC900](processing {}...)'.format(work[:-4])
+                    progress.update(task_id, description=descr)
+                    self._csv_to_lua(work)
+                    progress.update(task_id, advance=1)
+
+                if self.is_save_string: self.save_global_string()
+                progress.console.log(f'save global string')
+                # final update for message on overall progress bar
+                progress.update(task_id, description='[bold green]process done!')
 
 
     def _csv_to_lua(self, file):
@@ -443,13 +466,12 @@ class CSVToLua:
                 self.heads = {}
                 if data is None: return
                 # load variable type
-                # if data['MainTableName'] != 'AchievementBadgeTable': return
+                # if data['MainTableName'] != 'DailyActivitiesTable': return
                 for field in data['Fields']:
                     # config for server or client
                     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
                         self.types[field['FieldName']] = field
                         self.heads[field[self.pos_id]]= field['FieldName']
-
                 def extract_table(name):
                     # header adaptation
                     data = pd.read_csv(os.path.join(self._dir, self.TABLE, name)).drop([0])
@@ -465,7 +487,6 @@ class CSVToLua:
                     if os.path.exists(file_path) and self.write_flag & 1:
                         os.remove(file_path)
 
-                    # TODO: sort table if server
                     # sort table if server
                     self.get_primary_index()
                     if self.pos == 'server':
@@ -481,7 +502,7 @@ class CSVToLua:
                     lua_raw_data = data.to_dict('index')
                     table = self.iter_csv_recursive(lua_raw_data)
                     try:
-                        print(f'processing {self.bcolors.OK}' + name + f'{self.bcolors.RESET} ...')
+                        # print(f'processing {self.bcolors.OK}' + name + f'{self.bcolors.RESET} ...')
                         if len(name.split('/')) == 2: name = name.split('/')[1]
                         if self.write_flag & 1:
                             with open(file_path, 'w', encoding='utf-8') as w:

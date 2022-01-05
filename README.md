@@ -19,3 +19,10 @@
 
 #### Features
 
+##### 个性化输出
+
+* 处理进度
+
+![progress-print-1](.\docs\progress-print-1.png)
+
+![progress-print-2](.\docs\progress-print-2.png)
