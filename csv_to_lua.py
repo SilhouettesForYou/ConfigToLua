@@ -76,6 +76,9 @@ class CSVToLua:
         self.string_index = 0
         self.global_string = {}
         self.write_flag = 1
+        self.combined_table = [
+            'GlobalTable'
+        ]
 
 
     def setConfig(self, pos, is_need_key=False, is_need_index=False, is_save_string=False):
@@ -248,6 +251,8 @@ class CSVToLua:
             # s += '{_size=0,_t="v"}'
             s += '{}'
         elif isinstance(obj, Number):
+            # if isinstance(obj, float): s += f'{obj:f}'
+            # else: s += str(obj)
             s += str(obj)
         elif isinstance(obj, dict):
             s += "{"
@@ -286,11 +291,12 @@ class CSVToLua:
     def compress_lua(self, obj, name):
         s = 'local t = {}\n'
 
+        i = 1
         for index, value in obj.items():
             line = '  t[{}]={{'.format(index)
             # add splitted function for <issue#luajit2.1限制了一个function中constant的数量为65535>
             # [LuaJIT and large tables](http://lua-users.org/lists/lua-l/2010-03/msg00237.html)
-            if index % self.split_num == 1:
+            if i % self.split_num == 1:
                 line = ';(function()\n' + line
             
             for k, items in value.items():
@@ -305,13 +311,14 @@ class CSVToLua:
             line = line[:-1] + '}\n'
 
             # add splitted function for <issue#luajit2.1限制了一个function中constant的数量为65535>
-            if index % self.split_num == 0 and index != 1:
+            if i % self.split_num == 0 and i != 1:
                 line += 'end)()\n'# + line
 
             s += line
+            i += 1
 
         s = s[:-2] + '\n' if s[-2] == ',' else s
-        if len(obj) != 0 and index % self.split_num != 0: s += 'end)()\n'
+        if len(obj) != 0 and (i - 1) % self.split_num != 0: s += 'end)()\n'
 
         # define default table
         s += '\n\nlocal __default_table = {'
@@ -419,21 +426,14 @@ class CSVToLua:
                 self.heads = {}
                 if data is None: return
                 # load variable type
-                # if data['MainTableName'] != 'AttraddRecomTable': return
+                # if data['MainTableName'] != 'EquipTipsTable': return
                 for field in data['Fields']:
                     # config for server or client
                     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
                         self.types[field['FieldName']] = field
                         self.heads[field[self.pos_id]]= field['FieldName']
 
-                for item in data['TableLocations']:
-                    name = item['ExcelPath']
-                            
-                    file_path = self.LUA.format(self.pos) + os.path.basename(name).replace('.csv', '.lua')
-                    if os.path.exists(file_path) and self.write_flag & 1:
-                        # continue
-                        os.remove(file_path)
-                            
+                def extract_table(name):
                     # header adaptation
                     data = pd.read_csv(os.path.join(self._dir, self.TABLE, name)).drop([0])
                     columns = list(set(data.columns.tolist()) - set(self.heads.values()))
@@ -441,7 +441,13 @@ class CSVToLua:
                     data = data.dropna(axis=0, how='all')
                     _heads = sorted(self.heads.items(), key = lambda item : item[0])
                     data = data[[x[1] for x in _heads]]
-                    
+                    return data
+
+                def process_one_table(name, data):
+                    file_path = self.LUA.format(self.pos) + os.path.basename(name).replace('.csv', '.lua')
+                    if os.path.exists(file_path) and self.write_flag & 1:
+                        os.remove(file_path)
+
                     lua_raw_data = data.to_dict('index')
                     table = self.iter_csv_recursive(lua_raw_data)
                     try:
@@ -453,6 +459,17 @@ class CSVToLua:
                     except Exception as e:
                         print(f'{self.bcolors.FAIL} error: ' + name + f'{self.bcolors.RESET}')
                         traceback.print_exc()
+
+                # process combined table
+                if data['MainTableName'] in self.combined_table:
+                    t = pd.concat([extract_table(v['ExcelPath']) for v in data['TableLocations']], ignore_index=True)
+                    t.index += 1
+                    process_one_table(data['MainTableName'] + '.csv', t)
+                else:
+                    for item in data['TableLocations']:
+                        name = item['ExcelPath']
+                        process_one_table(name, extract_table(name))
+                    
             process(data)
             process(data['Children'][0] if data['Children'] else None) # process child table
 

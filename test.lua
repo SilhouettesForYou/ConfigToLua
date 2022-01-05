@@ -3,5 +3,5 @@ function _load(src)
     return require(src)
 end
 
-local t = _load('table-client.GlobalString')
-print(#t)
+-- local t = _load('table-server.ItemAchievingTypeTable')
+-- print(#t)
