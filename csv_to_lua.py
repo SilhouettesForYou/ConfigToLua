@@ -306,7 +306,7 @@ class CSVToLua:
 
         i = 1
         for index, value in obj.items():
-            line = '  t[{}]={{'.format(index)
+            line = '  t[{}]={{'.format(index - 1)
             # add splitted function for <issue#luajit2.1限制了一个function中constant的数量为65535>
             # [LuaJIT and large tables](http://lua-users.org/lists/lua-l/2010-03/msg00237.html)
             if i % self.split_num == 1:
@@ -422,6 +422,7 @@ class CSVToLua:
             self.json_dir = os.path.join(dir_config.split('#')[1], self.JSON)
             works = os.listdir(self.json_dir)
             
+            # TODO: process with multi-thread
             # thread attemption
             # with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             #     futures = [executor.submit(self._csv_to_lua, file=work) for work in works]
@@ -463,17 +464,18 @@ class CSVToLua:
                     if os.path.exists(file_path) and self.write_flag & 1:
                         os.remove(file_path)
 
+                    # TODO: sort table if server
                     # sort table if server
                     if self.pos == 'server':
                         self.get_primary_index()
-                    #     try:
-                    #         _index = self.primary_index['key']
-                    #         if _index and not data.empty:
-                    #             data[_index] = data[_index].astype(int)
-                    #             data.sort_values(_index, inplace=True)
-                    #             data[_index] = data[_index].astype(object)
-                    #     except Exception as e:
-                    #         print(f'{self.bcolors.FAIL} error while sort table: ' + name + f'{self.bcolors.RESET}')
+                        # try:
+                        #     _index = self.primary_index['key']
+                        #     if _index and not data.empty:
+                        #         data[_index] = data[_index].astype(int)
+                        #         data.sort_values(_index, inplace=True)
+                        #         data[_index] = data[_index].astype(object)
+                        # except Exception as e:
+                        #     print(f'{self.bcolors.FAIL} error while sort table: ' + name + f'{self.bcolors.RESET}')
 
                     lua_raw_data = data.to_dict('index')
                     table = self.iter_csv_recursive(lua_raw_data)
@@ -488,7 +490,7 @@ class CSVToLua:
                         traceback.print_exc()
 
                 # process combined table
-                if data['MainTableName'] in self.combined_table:
+                if len(data['TableLocations']) > 1:
                     t = pd.concat([extract_table(v['ExcelPath']) for v in data['TableLocations']], ignore_index=True)
                     t.index += 1
                     process_one_table(data['MainTableName'] + '.csv', t)
