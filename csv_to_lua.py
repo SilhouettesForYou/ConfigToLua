@@ -305,8 +305,8 @@ class CSVToLua:
         s = 'local t = {}\n'
 
         i = 1
-        for index, value in obj.items():
-            line = '  t[{}]={{'.format(index - 1)
+        for _, value in obj.items():
+            line = '  t[{}]={{'.format(i - 1)
             # add splitted function for <issue#luajit2.1限制了一个function中constant的数量为65535>
             # [LuaJIT and large tables](http://lua-users.org/lists/lua-l/2010-03/msg00237.html)
             if i % self.split_num == 1:
@@ -345,7 +345,7 @@ class CSVToLua:
         s = (s[:-1] if s[-1] == ',' else s) + '}\n' ### generate empty tabel possibly
 
         # define table type enum for server
-        if self.pos == 'server':
+        if self.pos == 'server' or self.pos == 'client':
             s += '\n\nlocal head = {\n'
             for key in sorted(self.heads.items(), key = lambda item : item[0]):
                 fields = self.types[key[1]]
@@ -364,8 +364,9 @@ class CSVToLua:
         s += '\tend\n'
         # s += '\tbase.__metatable = false\n'
         s += 'end\n'
-        if self.pos == 'server':
-            s += 'local {} = {{head = head, data = t, bin_pos = {}, total_line_size = {}}}'.format(name, self.primary_index['idx'], len(obj))
+        if self.pos == 'server' or self.pos == 'client':
+            s += 'local {} = {{head = head, data = t, bin_pos = {}, total_line_size = {}, col_size = {}}}'.format(
+                name, self.primary_index['idx'], len(obj), len(self.heads))
         else:
             s += 'local {} = t'.format(name)
         s += '\nreturn {}\n'.format(name)
@@ -442,7 +443,7 @@ class CSVToLua:
                 self.heads = {}
                 if data is None: return
                 # load variable type
-                # if data['MainTableName'] != 'EquipTipsTable': return
+                # if data['MainTableName'] != 'AchievementBadgeTable': return
                 for field in data['Fields']:
                     # config for server or client
                     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
@@ -466,16 +467,16 @@ class CSVToLua:
 
                     # TODO: sort table if server
                     # sort table if server
+                    self.get_primary_index()
                     if self.pos == 'server':
-                        self.get_primary_index()
-                        # try:
-                        #     _index = self.primary_index['key']
-                        #     if _index and not data.empty:
-                        #         data[_index] = data[_index].astype(int)
-                        #         data.sort_values(_index, inplace=True)
-                        #         data[_index] = data[_index].astype(object)
-                        # except Exception as e:
-                        #     print(f'{self.bcolors.FAIL} error while sort table: ' + name + f'{self.bcolors.RESET}')
+                        try:
+                            _index = self.primary_index['key']
+                            if _index and not data.empty:
+                                _type = self.types[_index]['FieldTypeName']
+                                data[_index] = data[_index].astype(int if _type in ['int', 'uint', 'long long'] else object)
+                                data.sort_values(_index, inplace=True)
+                        except Exception as e:
+                            print(f'{self.bcolors.FAIL} error while sort table: ' + name + f'{self.bcolors.RESET}')
 
                     lua_raw_data = data.to_dict('index')
                     table = self.iter_csv_recursive(lua_raw_data)
