@@ -109,7 +109,7 @@ class CSVToLua:
         def is_nan(__v):
             if type(__v) == float:
                 return math.isnan(__v)
-            if (cast == float or cast == int) and __v.strip() == '':
+            if (cast == float or cast == int) and str(__v).strip() == '':
                 return True
             return False
         def filter_escape(__v):
@@ -162,6 +162,9 @@ class CSVToLua:
 
 
     def arg_type(self, index, _str):
+        """
+        compile sequence length, type and default
+        """
         int_pattern = re.compile('[1-9]\d*|long long|uint|int').findall(_str)
         float_pattern = re.compile('[1-9]\d*|double|float').findall(_str)
         string_pattern = re.compile('[1-9]\d*|string').findall(_str)
@@ -284,8 +287,18 @@ class CSVToLua:
         for k, v in self.TableTypeEnum.TYPES.items():
             split = k.split('_')
             if len(patterns) == len(split) and len(re.compile('|'.join(patterns)).findall(k.lower())) == len(split):
-                return v
+                size = re.compile('[1-9]\d*').findall(_type)
+                return v, int(size[0]) if size else 0
         return -1
+
+
+    def get_primary_index(self):
+        self.primary_index = {'idx' : -1, 'key' : None}
+        for k, v in self.types.items():
+            ## record primary index
+            if self.types[k]['IndexType'] == 1:
+                self.primary_index = {'idx' : self.types[k][self.pos_id], 'key' : k}
+                return
 
 
     def compress_lua(self, obj, name):
@@ -322,23 +335,25 @@ class CSVToLua:
 
         # define default table
         s += '\n\nlocal __default_table = {'
-        index = 1
+        # index = 1
         for key in sorted(self.heads.items(), key = lambda item : item[0]):
             _type = self.types[key[1]]['FieldTypeName']
             # s += '{}={},'.format(key, index)
             default_value = self.base_type(_type)
             s += '{}={},'.format(key[1], default_value if default_value != '' else '\"\"')
-            index += 1
+            # index += 1
         s = (s[:-1] if s[-1] == ',' else s) + '}\n' ### generate empty tabel possibly
 
         # define table type enum for server
         if self.pos == 'server':
-            s += '\n\nlocal __table_type_enum = {'
+            s += '\n\nlocal head = {\n'
             for key in sorted(self.heads.items(), key = lambda item : item[0]):
-                _pos = self.types[key[1]][self.pos_id]
-                enum = self.type_map_compile(self.types[key[1]]['FieldTypeName'])
-                s += '[{}]={},'.format(_pos, enum)
-            s = (s[:-1] if s[-1] == ',' else s) + '}\n' ### generate empty tabel possibly
+                fields = self.types[key[1]]
+                _pos = fields[self.pos_id]
+                enum, size = self.type_map_compile(fields['FieldTypeName'])
+                s += '  [{}]={{ need_local = {}, seq_size = {}, field_type = {} }},\n'.format(_pos, str(fields['NeedLocal']).lower(), size, enum)
+                
+            s = (s[:-2] + '\n' if s[-2] == ',' else s) + '}\n' ### generate empty tabel possibly
 
 
         # add postfix
@@ -350,7 +365,7 @@ class CSVToLua:
         # s += '\tbase.__metatable = false\n'
         s += 'end\n'
         if self.pos == 'server':
-            s += 'local {} = {{head=__table_type_enum, data=t}}'.format(name)
+            s += 'local {} = {{head = head, data = t, bin_pos = {}, total_line_size = {}}}'.format(name, self.primary_index['idx'], len(obj))
         else:
             s += 'local {} = t'.format(name)
         s += '\nreturn {}\n'.format(name)
@@ -448,6 +463,18 @@ class CSVToLua:
                     if os.path.exists(file_path) and self.write_flag & 1:
                         os.remove(file_path)
 
+                    # sort table if server
+                    if self.pos == 'server':
+                        self.get_primary_index()
+                    #     try:
+                    #         _index = self.primary_index['key']
+                    #         if _index and not data.empty:
+                    #             data[_index] = data[_index].astype(int)
+                    #             data.sort_values(_index, inplace=True)
+                    #             data[_index] = data[_index].astype(object)
+                    #     except Exception as e:
+                    #         print(f'{self.bcolors.FAIL} error while sort table: ' + name + f'{self.bcolors.RESET}')
+
                     lua_raw_data = data.to_dict('index')
                     table = self.iter_csv_recursive(lua_raw_data)
                     try:
@@ -457,7 +484,7 @@ class CSVToLua:
                             with open(file_path, 'w', encoding='utf-8') as w:
                                 w.write(self.compress_lua(table, name[:-4]))
                     except Exception as e:
-                        print(f'{self.bcolors.FAIL} error: ' + name + f'{self.bcolors.RESET}')
+                        print(f'{self.bcolors.FAIL} error while compress lua: ' + name + f'{self.bcolors.RESET}')
                         traceback.print_exc()
 
                 # process combined table
