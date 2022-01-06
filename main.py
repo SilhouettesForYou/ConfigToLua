@@ -5,19 +5,22 @@ from xml_to_lua import XmlToLua as xml
 from csv_to_lua import CSVToLua as csv
 from pkg_to_cpp import PkgToCpp as p2c
 
+from rich.console import Console
+from rich.markdown import Markdown
+
 
 def usage():
-    print('-x, --xml: convert .txt(.xml) to .lua')
-    print('-c, --csv: convert .csv to .lua')
-    print('-a, --all: convert all')
-    print('-h: print help message.')
+    console = Console()
+    with open('help.md', encoding='utf-8') as readme:
+        markdown = Markdown(readme.read())
+    console.print(markdown)
 
 
 def main(argv):
     sys.setrecursionlimit(10000)
     args = argv[1:]
     try:
-        opts, args = getopt.getopt(args, 'xcaf:kpis:', ['xml', 'csv', 'all', 'for=', 'key', 'pkg', 'index', 'string='])
+        opts, args = getopt.getopt(args, 'hxcaf:kpis:', ['help', 'xml', 'csv', 'all', 'for=', 'key', 'pkg', 'index', 'string='])
     except getopt.GetoptError as err:
         print(err)
         usage()
