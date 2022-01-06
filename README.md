@@ -57,10 +57,10 @@ python main.py --pkg
 
 * 处理进度
 
-  ![progress-print-1](.\docs\progress-print-1.png)
+  ![progress-print-1](./docs/progress-print-1.png)
 
-  ![progress-print-2](.\docs\progress-print-2.png)
+  ![progress-print-2](./docs/progress-print-2.png)
 
 * 说明文档
 
-  ![help-doc](.\docs\help-doc.png)
+  ![help-doc](./docs/help-doc.png)
