@@ -3,6 +3,7 @@ table-client/
 Table-server/
 table-server/
 SkillData/
+script/
 .vscode/
 __pycache__/
 *.rar

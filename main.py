@@ -4,6 +4,7 @@ import sys
 from xml_to_lua import XmlToLua as xml
 from csv_to_lua import CSVToLua as csv
 from pkg_to_cpp import PkgToCpp as p2c
+from peel_deprecated_module import PeelDeprecatedModule as pdm
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -20,7 +21,7 @@ def main(argv):
     sys.setrecursionlimit(10000)
     args = argv[1:]
     try:
-        opts, args = getopt.getopt(args, 'hxcaf:kpis:', ['help', 'xml', 'csv', 'all', 'for=', 'key', 'pkg', 'index', 'string='])
+        opts, args = getopt.getopt(args, 'hxcaf:kpis:', ['help', 'xml', 'csv', 'all', 'for=', 'key', 'pkg', 'index', 'string=', 'peel'])
     except getopt.GetoptError as err:
         print(err)
         usage()
@@ -51,10 +52,10 @@ def main(argv):
             csv.csv_to_lua()
         elif o in ('-p', '--pkg'):
             p2c.pkg_to_cpp()
+        elif o == '--peel':
+            pdm.peel()
         elif o in ('-a', '--all'):
-            xml.xml_to_lua()
-            csv.setConfig(for_server_or_client, is_need_key=is_key, is_need_index=is_index, is_save_string=is_string)
-            csv.csv_to_lua()
+            pass
         else:
             sys.exit(3)
 
