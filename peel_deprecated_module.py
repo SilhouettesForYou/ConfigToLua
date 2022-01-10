@@ -21,13 +21,21 @@ class PeelDeprecatedModule:
         def __init__(self) -> None:
             super().__init__()
             self.function_names = []
+            self.enum_names = []
 
         def visit_Function(self, node):
-            if hasattr(node, 'name') and hasattr(node.name, 'id'):
+            if isinstance(node, ast.Name):
                 self.function_names.append(str(node.name.id))
 
+        def visit_Assign(self, node):
+            for target in node.targets:
+                # if isinstance(target, ast.Name):
+                #     print(target.id, target.first_token.column)
+                if isinstance(target, ast.Name) and target.first_token.column == 0:
+                    self.enum_names.append(target.id)
+
         def get(self):
-            return self.function_names
+            return self.function_names, self.enum_names
 
 
     def __init__(self):
@@ -53,7 +61,7 @@ class PeelDeprecatedModule:
             'Main' : [
                 {
                     'lineno' : 13,
-                    'syntax' : 'require "DeclaredGlobal"\nrequire "Common/define"'
+                    'syntax' : 'require "Common/define"\nrequire "DeclaredGlobal"'
                 }
             ]
         }
@@ -100,25 +108,35 @@ class PeelDeprecatedModule:
         return num
 
 
-    def add_scope_to_function(self, lines, scope):
-        def add_scope(old_syntax, new_syntax):
+    def add_scope(self, lines, scope):
+        def _add_scope(old_syntax, new_syntax):
             try:
                 index = lines.index(old_syntax + '\n')
                 lines[index] = new_syntax
             except ValueError as e:
-                print('Index not found: [italic magenta]{}[/italic magenta]\nSyntax: [italic red]{}[/italic red]'.format(scope, old_syntax))
+                print('Index not found: [italic magenta]{}[/italic magenta]\nSyntax: [italic red]{}[/italic red]\n'.format(scope, old_syntax))
 
         src = ''.join(lines)
         tree = ast.parse(src)
         visitor = self.FunctionVisitor()
         visitor.visit(tree)
         
-        for func in visitor.get():
+        funcs, enums = visitor.get()
+
+        for func in funcs:
             function_pattern = re.compile('function\s*{}\(.*\).*'.format(func))
             args_pattern = re.compile('\(.*\)')
             function_syntax, args_list = self.search_pattern(src, function_pattern, args_pattern)
             if function_syntax:
-                add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
+                _add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
+
+        for enum in enums:
+            enum_pattern = re.compile('{}.*'.format(enum))
+            enum_syntax, _ = self.search_pattern(src, enum_pattern)
+            if enum_pattern:
+                # print('{}.{}'.format(scope, enum_syntax))
+                _add_scope(enum_syntax, '{}.{}'.format(scope, enum_syntax))
+
         return ''.join(lines)
 
 
@@ -184,14 +202,14 @@ class PeelDeprecatedModule:
                                     ## III search pattern with `class`
                                     class_syntax, class_name = self.search_pattern(content, self.class_pattern, self.name_pattern)
                                     if class_syntax and class_name:
-                                        declare_global_syntax = 'local {}\n{}.{} = {}'.format(class_syntax, module_name, class_name, class_name)
+                                        declare_global_syntax = 'local {}\n{}.{} = {}\n'.format(class_syntax, module_name, class_name, class_name)
                                         annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
                                         annotation_module(class_syntax, declare_global_syntax)
                                         self.write_content(''.join(lines), _path)
                                     else:
                                         ## IV not exist declaration `class`
                                         annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
-                                        self.write_content(self.add_scope_to_function(lines, module_name), _path)
+                                        self.write_content(self.add_scope(lines, module_name), _path)
                                 progress.update(task_id, advance=1)
                 progress.update(task_id, description='[bold green]process done!')
 
