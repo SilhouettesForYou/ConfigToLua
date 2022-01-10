@@ -39,6 +39,25 @@ class PeelDeprecatedModule:
         self.class_pattern = re.compile('\w+\s*=\s*class\("\w+"(, \w+){0,1}\)')
         self.declared_pattern = re.compile('declareGlobal\("\w+", \w+(\.\w+){0,1}\)')
 
+        self.special_files = {
+            'array' : [
+                {
+                    'lineno' : 1,
+                    'syntax' : '-- module("Common", package.seeall)'
+                },
+                {
+                    'lineno' : 8,
+                    'syntax' : 'Common.array = {}'
+                }
+            ],
+            'Main' : [
+                {
+                    'lineno' : 13,
+                    'syntax' : 'require "DeclaredGlobal"\nrequire "Common/define"'
+                }
+            ]
+        }
+
     
     def set_config(self, **args):
         if '--copy' in args:
@@ -65,6 +84,7 @@ class PeelDeprecatedModule:
 
     
     def clear_repo(self, script_dir):
+        print('git checkout .')
         self.remote_dir = script_dir
         splits = self.remote_dir.split('\\')
         self.repo = Repo('\\'.join(splits[:-3]))
@@ -139,6 +159,17 @@ class PeelDeprecatedModule:
                                         lines[index] = new_syntax
                                     except ValueError as e:
                                         print(f)
+                                
+                                def process_special_files(name):
+                                    if name in self.special_files:
+                                        for v in self.special_files[name]:
+                                            lines[v['lineno'] - 1] = v['syntax'] + '\n'
+                                        self.write_content(''.join(lines), _path)
+                                        return True
+                                    return False
+
+                                if process_special_files(f[:-4]):
+                                   continue
                                         
                                 ## I search pattern with function `module``
                                 module_syntax, module_name = self.search_pattern(content, self.modules_pattern, self.name_pattern)
