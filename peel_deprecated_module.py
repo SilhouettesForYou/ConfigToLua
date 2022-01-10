@@ -2,6 +2,8 @@ import os
 import re
 import shutil
 
+from git import Repo
+from luaparser import ast
 from pathlib import Path
 from rich import print
 from rich.progress import (
@@ -14,28 +16,46 @@ from rich.progress import (
 
 class PeelDeprecatedModule:
 
+    class FunctionVisitor(ast.ASTVisitor):
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.function_names = []
+
+        def visit_Function(self, node):
+            if hasattr(node, 'name') and hasattr(node.name, 'id'):
+                self.function_names.append(str(node.name.id))
+
+        def get(self):
+            return self.function_names
+
+
     def __init__(self):
         self.SCRIPT_DIR = './script/'
         self.DECLARED_GLOBAL = 'DeclaredGlobal.lua'
         self.root_modules = {}
         self.modules_pattern = re.compile('^module\("\w+(\.\w+){0,1}", package.seeall\)')
         self.name_pattern = re.compile('"\w+(\.\w+){0,1}"')
-        self.class_pattern = re.compile('\w+\s=\sclass\("\w+"(, \w+){0,1}\)')
+        self.class_pattern = re.compile('\w+\s*=\s*class\("\w+"(, \w+){0,1}\)')
         self.declared_pattern = re.compile('declareGlobal\("\w+", \w+(\.\w+){0,1}\)')
 
     
     def set_config(self, **args):
         if '--copy' in args:
-            self.remote_dir = ''
+            self.copy_flag = True
+        else:
+            self.copy_flag = False
 
 
-    def search_pattern(self, pattern, content):
+    def search_pattern(self, content, pattern, sub_pattern=None):
         result = pattern.search(content)
         if result and result.group():
             line = result.group()
-            name = self.name_pattern.search(line).group()
-            name = name[1:-1]
-            return line, name
+            if sub_pattern:
+                name = sub_pattern.search(line).group()
+                name = name[1:-1]
+                return line, name
+            return line, None
         return None, None
 
 
@@ -43,19 +63,57 @@ class PeelDeprecatedModule:
         with open(path, 'w', encoding='utf-8') as w:
             w.write(content)
 
+    
+    def clear_repo(self, script_dir):
+        self.remote_dir = script_dir
+        splits = self.remote_dir.split('\\')
+        self.repo = Repo('\\'.join(splits[:-3]))
+        if self.repo.is_dirty(): self.repo.index.checkout(force=True)
+
+
+    def _compute_len(self, root_dir):
+        num = 0
+        for _, _, fs in os.walk(root_dir):
+            for f in fs:
+                if f.endswith('.lua'):
+                    num += 1
+        return num
+
+
+    def add_scope_to_function(self, lines, scope):
+        def add_scope(old_syntax, new_syntax):
+            try:
+                index = lines.index(old_syntax + '\n')
+                lines[index] = new_syntax
+            except ValueError as e:
+                print('Index not found: [italic magenta]{}[/italic magenta]\nSyntax: [italic red]{}[/italic red]'.format(scope, old_syntax))
+
+        src = ''.join(lines)
+        tree = ast.parse(src)
+        visitor = self.FunctionVisitor()
+        visitor.visit(tree)
+        
+        for func in visitor.get():
+            function_pattern = re.compile('function\s*{}\(.*\).*'.format(func))
+            args_pattern = re.compile('\(.*\)')
+            function_syntax, args_list = self.search_pattern(src, function_pattern, args_pattern)
+            if function_syntax:
+                add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
+        return ''.join(lines)
+
 
     def _peel(self):
         with open('.config', 'r') as _f:
             lines = _f.readlines()
             dir_config = lines[3].strip()
             _dir = dir_config.split('#')[1]
-            if self.remote_dir is not None: self.remote_dir = _dir
+            self.clear_repo(_dir)
             progress = Progress(
-                TextColumn('{task.description}'),
+                TimeElapsedColumn(),
                 BarColumn(),
-                TimeElapsedColumn()
+                TextColumn('{task.description}')
             )
-            task_id = progress.add_task("", total=2936)
+            task_id = progress.add_task("", total=self._compute_len(_dir))
             with progress:
                 for path, dirs, fs in os.walk(_dir):
                     for __dir in dirs:
@@ -69,7 +127,7 @@ class PeelDeprecatedModule:
                             if not os.path.exists(script_dir) and not script_dir.startswith('.'):
                                 os.mkdir(script_dir)
                             with open(os.path.join(path, f), 'r', encoding='utf-8') as file:
-                                descr = '[bold #FFC900](Commented Code: {}...)'.format(os.path.join(path, f))
+                                descr = '[bold #FFC900]Commented Code: {}...'.format(f)
                                 progress.update(task_id, description=descr)
                                 lines = [l for l in file]
                                 content = ''.join(lines)
@@ -83,17 +141,17 @@ class PeelDeprecatedModule:
                                         print(f)
                                         
                                 ## I search pattern with function `module``
-                                module_syntax, module_name = self.search_pattern(self.modules_pattern, content)
+                                module_syntax, module_name = self.search_pattern(content, self.modules_pattern, self.name_pattern)
                                 if module_syntax and module_name:
                                     if module_name not in self.root_modules:
                                         self.root_modules[module_name] = 0
                                     self.root_modules[module_name] += 1
                                     ## II search pattern with `declare global`
-                                    declare_syntax, declare_name = self.search_pattern(self.declared_pattern, content)
+                                    declare_syntax, declare_name = self.search_pattern(content, self.declared_pattern, self.name_pattern)
                                     if declare_syntax and declare_name:
                                         pass
                                     ## III search pattern with `class`
-                                    class_syntax, class_name = self.search_pattern(self.class_pattern, content)
+                                    class_syntax, class_name = self.search_pattern(content, self.class_pattern, self.name_pattern)
                                     if class_syntax and class_name:
                                         declare_global_syntax = 'local {}\n{}.{} = {}'.format(class_syntax, module_name, class_name, class_name)
                                         annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
@@ -102,7 +160,9 @@ class PeelDeprecatedModule:
                                     else:
                                         ## IV not exist declaration `class`
                                         annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
-                                        self.write_content(''.join(lines), _path)
+                                        self.write_content(self.add_scope_to_function(lines, module_name), _path)
+                                progress.update(task_id, advance=1)
+                progress.update(task_id, description='[bold green]process done!')
 
 
     def get_modules(self):
@@ -140,7 +200,7 @@ class PeelDeprecatedModule:
 
 
     def copy_to_remote(self):
-        if self.remote_dir:
+        if self.copy_flag:
             shutil.copytree(self.SCRIPT_DIR, self.remote_dir, dirs_exist_ok=True)
 
 
