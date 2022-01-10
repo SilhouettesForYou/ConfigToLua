@@ -84,12 +84,10 @@ class CSVToLua:
         self.string_index = 0
         self.global_string = {}
         self.write_flag = 1
-        self.combined_table = [
-            'GlobalTable'
-        ]
+        self.require_names = []
 
 
-    def setConfig(self, pos, is_need_key=False, is_need_index=False, is_save_string=False):
+    def setConfig(self, pos, is_need_key=False, is_need_index=False, is_save_string=False, **args):
         self.pos = pos
         self.pos_id = 'ClientPosID'
         if self.pos == 'server': self.pos_id = 'ServerPosID'
@@ -100,6 +98,12 @@ class CSVToLua:
         self.is_need_key = is_need_key
         self.is_need_index = is_need_index
         self.is_save_string = is_save_string
+
+        if 'require' in args:
+            self.is_require = True
+            if args['require'] and args['require'] == 'only': self.write_flag &= 2
+            elif args['require'] and args['require'] == 'all': self.write_flag &= 1
+
 
     def set_writ_flag(self, flag):
         self.write_flag &= flag
@@ -422,6 +426,14 @@ class CSVToLua:
     def get_global_string(self):
         return self.global_string
 
+    
+    def save_require(self):
+        with open(self.LUA.format(self.pos) + 'TableInit.lua', 'w') as w:
+            w.write('local ServerTable = {}\n')
+            for name in self.require_names:
+                w.write('ServerTable.{} = require \"{}\"\n'.format(name[:-4], name[:-4]))
+            w.write('return ServerTable')
+
 
     def csv_to_lua(self):
         with open('.config', 'r') as f:
@@ -452,7 +464,8 @@ class CSVToLua:
                     progress.update(task_id, advance=1)
 
                 if self.is_save_string: self.save_global_string()
-                progress.console.log(f'save global string')
+                if self.is_require: self.save_require()
+                # progress.console.log(f'save global string')
                 # final update for message on overall progress bar
                 progress.update(task_id, description='[bold green]process done!')
 
@@ -504,6 +517,7 @@ class CSVToLua:
                     try:
                         # print(f'processing {self.bcolors.OK}' + name + f'{self.bcolors.RESET} ...')
                         if len(name.split('/')) == 2: name = name.split('/')[1]
+                        self.require_names.append(name)
                         if self.write_flag & 1:
                             with open(file_path, 'w', encoding='utf-8') as w:
                                 w.write(self.compress_lua(table, name[:-4]))
