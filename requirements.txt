@@ -1,5 +1,7 @@
 CppHeaderParser==2.7.4
+GitPython==3.1.25
+luaparser==3.1.0
 pandas==1.3.4
-rich==10.16.2
+rich==11.0.0
 SLPP==1.2.3
 xmltodict==0.12.0
