@@ -21,7 +21,7 @@ def main(argv):
     sys.setrecursionlimit(10000)
     args = argv[1:]
     try:
-        opts, args = getopt.getopt(args, 'hxcaf:kpis:', ['help', 'xml', 'csv', 'all', 'for=', 'key', 'pkg', 'index', 'string=', 'peel'])
+        opts, args = getopt.getopt(args, 'hxcaf:kpis:', ['help', 'xml', 'csv', 'all', 'for=', 'key', 'pkg', 'index', 'string=', 'peel', 'copy'])
     except getopt.GetoptError as err:
         print(err)
         usage()
@@ -30,6 +30,7 @@ def main(argv):
     is_key = False
     is_index = False
     is_string = False
+    args_for_peel = {}
     for o, a in opts:
         if o in ('-h', '--help'):
             usage()
@@ -52,7 +53,10 @@ def main(argv):
             csv.csv_to_lua()
         elif o in ('-p', '--pkg'):
             p2c.pkg_to_cpp()
+        elif o == '--copy':
+            args_for_peel[o] = True
         elif o == '--peel':
+            pdm.set_config(**args_for_peel)
             pdm.peel()
         elif o in ('-a', '--all'):
             pass

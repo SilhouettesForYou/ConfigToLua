@@ -1,8 +1,15 @@
 import os
 import re
+import shutil
 
 from pathlib import Path
-from rich.console import Console
+from rich import print
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 
 class PeelDeprecatedModule:
@@ -16,7 +23,10 @@ class PeelDeprecatedModule:
         self.class_pattern = re.compile('\w+\s=\sclass\("\w+"(, \w+){0,1}\)')
         self.declared_pattern = re.compile('declareGlobal\("\w+", \w+(\.\w+){0,1}\)')
 
-        self.console = Console()
+    
+    def set_config(self, **args):
+        if '--copy' in args:
+            self.remote_dir = ''
 
 
     def search_pattern(self, pattern, content):
@@ -39,50 +49,60 @@ class PeelDeprecatedModule:
             lines = _f.readlines()
             dir_config = lines[3].strip()
             _dir = dir_config.split('#')[1]
-            for path, dirs, fs in os.walk(_dir):
-                for __dir in dirs:
-                    script_dir = Path(os.path.join(self.SCRIPT_DIR, path[len(_dir) + 1:])).as_posix()
-                    script_dir = Path(os.path.join(script_dir, __dir)).as_posix()
-                    if not os.path.exists(script_dir) and not script_dir.startswith('.'):
-                        os.mkdir(script_dir)
-                for f in fs:
-                    if f.endswith('.lua'):
+            if self.remote_dir is not None: self.remote_dir = _dir
+            progress = Progress(
+                TextColumn('{task.description}'),
+                BarColumn(),
+                TimeElapsedColumn()
+            )
+            task_id = progress.add_task("", total=2936)
+            with progress:
+                for path, dirs, fs in os.walk(_dir):
+                    for __dir in dirs:
                         script_dir = Path(os.path.join(self.SCRIPT_DIR, path[len(_dir) + 1:])).as_posix()
+                        script_dir = Path(os.path.join(script_dir, __dir)).as_posix()
                         if not os.path.exists(script_dir) and not script_dir.startswith('.'):
                             os.mkdir(script_dir)
-                        with open(os.path.join(path, f), 'r', encoding='utf-8') as file:
-                            lines = [l for l in file]
-                            content = ''.join(lines)
-                            _path = script_dir + '/' + f
+                    for f in fs:
+                        if f.endswith('.lua'):
+                            script_dir = Path(os.path.join(self.SCRIPT_DIR, path[len(_dir) + 1:])).as_posix()
+                            if not os.path.exists(script_dir) and not script_dir.startswith('.'):
+                                os.mkdir(script_dir)
+                            with open(os.path.join(path, f), 'r', encoding='utf-8') as file:
+                                descr = '[bold #FFC900](Commented Code: {}...)'.format(os.path.join(path, f))
+                                progress.update(task_id, description=descr)
+                                lines = [l for l in file]
+                                content = ''.join(lines)
+                                _path = script_dir + '/' + f
 
-                            def annotation_module(old_syntax, new_syntax):
-                                try:
-                                    index = lines.index(old_syntax + '\n')
-                                    lines[index] = new_syntax
-                                except ValueError as e:
-                                    self.console.log(f)
-                                    
-                            ## I search pattern with function `module``
-                            module_syntax, module_name = self.search_pattern(self.modules_pattern, content)
-                            if module_syntax and module_name:
-                                if module_name not in self.root_modules:
-                                    self.root_modules[module_name] = 0
-                                self.root_modules[module_name] += 1
-                                ## II search pattern with `declare global`
-                                declare_syntax, declare_name = self.search_pattern(self.declared_pattern, content)
-                                if declare_syntax and declare_name:
-                                    pass
-                                ## III search pattern with `class`
-                                class_syntax, class_name = self.search_pattern(self.class_pattern, content)
-                                if class_syntax and class_name:
-                                    declare_global_syntax = 'local {}\n{}.{} = {}'.format(class_syntax, module_name, class_name, class_name)
-                                    annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
-                                    annotation_module(class_syntax, declare_global_syntax)
-                                    self.write_content(''.join(lines), _path)
-                                else:
-                                    ## IV not exist declaration `class`
-                                    annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
-                                    self.write_content(''.join(lines), _path)
+                                def annotation_module(old_syntax, new_syntax):
+                                    try:
+                                        index = lines.index(old_syntax + '\n')
+                                        lines[index] = new_syntax
+                                    except ValueError as e:
+                                        print(f)
+                                        
+                                ## I search pattern with function `module``
+                                module_syntax, module_name = self.search_pattern(self.modules_pattern, content)
+                                if module_syntax and module_name:
+                                    if module_name not in self.root_modules:
+                                        self.root_modules[module_name] = 0
+                                    self.root_modules[module_name] += 1
+                                    ## II search pattern with `declare global`
+                                    declare_syntax, declare_name = self.search_pattern(self.declared_pattern, content)
+                                    if declare_syntax and declare_name:
+                                        pass
+                                    ## III search pattern with `class`
+                                    class_syntax, class_name = self.search_pattern(self.class_pattern, content)
+                                    if class_syntax and class_name:
+                                        declare_global_syntax = 'local {}\n{}.{} = {}'.format(class_syntax, module_name, class_name, class_name)
+                                        annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
+                                        annotation_module(class_syntax, declare_global_syntax)
+                                        self.write_content(''.join(lines), _path)
+                                    else:
+                                        ## IV not exist declaration `class`
+                                        annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
+                                        self.write_content(''.join(lines), _path)
 
 
     def get_modules(self):
@@ -112,16 +132,22 @@ class PeelDeprecatedModule:
             res = pattern.findall(g)
             if res and res[0] not in unique_module:
                 unique_module.add(res[0])
-                lines.append('\n{} = {{}}\nmakeGlobal("{}", {})'.format(res[0], res[0], res[0]))
+                lines.append('\n{} = {{}}\nmakeGlobal({})'.format(res[0], res[0]))
             if res and len(res) == 2:
                 lines.append('{}.{} = {{}}'.format(res[0], res[1]))  
 
         self.write_content('\n'.join(lines), os.path.join(self.SCRIPT_DIR, self.DECLARED_GLOBAL))
 
 
+    def copy_to_remote(self):
+        if self.remote_dir:
+            shutil.copytree(self.SCRIPT_DIR, self.remote_dir, dirs_exist_ok=True)
+
+
     def peel(self):
         self._peel()
         self.write_declared_global()
+        self.copy_to_remote()
                       
         
 
