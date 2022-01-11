@@ -4,6 +4,8 @@ import shutil
 
 from git import Repo
 from luaparser import ast
+from luaparser.astnodes import Varargs
+from luaparser.builder import SyntaxException
 from pathlib import Path
 from rich import print
 from rich.progress import (
@@ -20,12 +22,12 @@ class PeelDeprecatedModule:
 
         def __init__(self) -> None:
             super().__init__()
-            self.function_names = []
+            self.function_names = {}
             self.enum_names = []
 
         def visit_Function(self, node):
-            if isinstance(node, ast.Name):
-                self.function_names.append(str(node.name.id))
+            if isinstance(node.name, ast.Name) and isinstance(node.args, ast.List):
+                self.function_names[str(node.name.id)] = node.args
 
         def visit_Assign(self, node):
             for target in node.targets:
@@ -42,7 +44,7 @@ class PeelDeprecatedModule:
         self.SCRIPT_DIR = './script/'
         self.DECLARED_GLOBAL = 'DeclaredGlobal.lua'
         self.root_modules = {}
-        self.modules_pattern = re.compile('^module\("\w+(\.\w+){0,1}", package.seeall\)')
+        self.modules_pattern = re.compile('module\("\w+(\.\w+){0,1}", package.seeall\)')
         self.name_pattern = re.compile('"\w+(\.\w+){0,1}"')
         self.class_pattern = re.compile('\w+\s*=\s*class\("\w+"(, \w+){0,1}\)')
         self.declared_pattern = re.compile('declareGlobal\("\w+", \w+(\.\w+){0,1}\)')
@@ -107,35 +109,53 @@ class PeelDeprecatedModule:
                     num += 1
         return num
 
+    def _index_of(self, l, v):
+        for i in range(len(l)):
+            if l[i].strip() == v.strip():
+                return i
+        return None
+
 
     def add_scope(self, lines, scope):
         def _add_scope(old_syntax, new_syntax):
-            try:
-                index = lines.index(old_syntax + '\n')
+            index = self._index_of(lines, old_syntax)
+            if index:
                 lines[index] = new_syntax
-            except ValueError as e:
-                print('Index not found: [italic magenta]{}[/italic magenta]\nSyntax: [italic red]{}[/italic red]\n'.format(scope, old_syntax))
+            else:
+            # try:
+            #     index = lines.index(old_syntax + '\n')
+            #     lines[index] = new_syntax
+            # except ValueError as e:
+            #     print(lines[20], old_syntax)
+            #     print(''.join(lines).find(old_syntax))
+                print('Syntax not found in [italic magenta]{}[/italic magenta]\nOld Syntax: [italic red]{}[/italic red]\nNew SynTax: [italic yellow]{}[/italic yellow]'.format(scope, old_syntax, new_syntax))
 
         src = ''.join(lines)
-        tree = ast.parse(src)
-        visitor = self.FunctionVisitor()
-        visitor.visit(tree)
-        
-        funcs, enums = visitor.get()
+        try:
+            tree = ast.parse(src)
+            visitor = self.FunctionVisitor()
+            visitor.visit(tree)
+            
+            funcs, enums = visitor.get()
 
-        for func in funcs:
-            function_pattern = re.compile('function\s*{}\(.*\).*'.format(func))
-            args_pattern = re.compile('\(.*\)')
-            function_syntax, args_list = self.search_pattern(src, function_pattern, args_pattern)
-            if function_syntax:
-                _add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
+            for func, args_list in funcs.items():
+                args_pattern = ['...' if isinstance(v, ast.Varargs) else v.id for v in args_list]
+                function_pattern = re.compile('function\s*{}\({}\).*'.format(func, ',\s*'.join(args_pattern)))
+                args_pattern = re.compile('\(.*\)')
+                function_syntax, args_list = self.search_pattern(src, function_pattern, args_pattern)
+                if function_syntax:
+                    # print(function_syntax)
+                    _add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
 
-        for enum in enums:
-            enum_pattern = re.compile('{}.*'.format(enum))
-            enum_syntax, _ = self.search_pattern(src, enum_pattern)
-            if enum_pattern:
-                # print('{}.{}'.format(scope, enum_syntax))
-                _add_scope(enum_syntax, '{}.{}'.format(scope, enum_syntax))
+            for enum in enums:
+                enum_pattern = re.compile(r'\b{}\b\s*\b=\b.*'.format(enum))
+                enum_syntax, _ = self.search_pattern(src, enum_pattern)
+                if enum_syntax:
+                    # print('{}.{}'.format(scope, enum_syntax))
+                    _add_scope(enum_syntax, '{}.{}\n'.format(scope, enum_syntax))
+
+        except SyntaxException as e:
+            print(scope)
 
         return ''.join(lines)
 
@@ -161,6 +181,7 @@ class PeelDeprecatedModule:
                             os.mkdir(script_dir)
                     for f in fs:
                         if f.endswith('.lua'):
+                            # if f != 'Serialization.lua': continue
                             script_dir = Path(os.path.join(self.SCRIPT_DIR, path[len(_dir) + 1:])).as_posix()
                             if not os.path.exists(script_dir) and not script_dir.startswith('.'):
                                 os.mkdir(script_dir)
@@ -243,7 +264,7 @@ class PeelDeprecatedModule:
                 unique_module.add(res[0])
                 lines.append('\n{} = {{}}\nmakeGlobal({})'.format(res[0], res[0]))
             if res and len(res) == 2:
-                lines.append('{}.{} = {{}}'.format(res[0], res[1]))  
+                lines.append('{}.{} = {{}}\nmakeGlobal({}.{})'.format(res[0], res[1], res[0], res[1]))
 
         self.write_content('\n'.join(lines), os.path.join(self.SCRIPT_DIR, self.DECLARED_GLOBAL))
 
