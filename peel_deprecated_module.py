@@ -148,11 +148,14 @@ class PeelDeprecatedModule:
                     _add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
 
             for enum in enums:
-                enum_pattern = re.compile(r'\b{}\b\s*\b=\b.*'.format(enum))
+                enum_pattern = re.compile(r'[^local "]\b{}\b\s*[^=<>~]=[^=].*'.format(enum))
                 enum_syntax, _ = self.search_pattern(src, enum_pattern)
                 if enum_syntax:
-                    # print('{}.{}'.format(scope, enum_syntax))
-                    _add_scope(enum_syntax, '{}.{}\n'.format(scope, enum_syntax))
+                    # print(enum_syntax, re.compile('\n{').search(enum_syntax))
+                    if re.compile('\n{').search(enum_syntax):
+                        enum_syntax = enum_syntax.split('\n')[0]
+                    _add_scope(enum_syntax, '{}.{}\n'.format(scope, enum_syntax.strip()))
+                    # _add_scope(enum_syntax, 'local {}\n'.format(enum_syntax))
 
         except SyntaxException as e:
             print(scope)
@@ -181,7 +184,7 @@ class PeelDeprecatedModule:
                             os.mkdir(script_dir)
                     for f in fs:
                         if f.endswith('.lua'):
-                            # if f != 'Serialization.lua': continue
+                            # if f != 'LocalServerWarBpMgr.lua': continue
                             script_dir = Path(os.path.join(self.SCRIPT_DIR, path[len(_dir) + 1:])).as_posix()
                             if not os.path.exists(script_dir) and not script_dir.startswith('.'):
                                 os.mkdir(script_dir)
