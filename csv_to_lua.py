@@ -85,6 +85,8 @@ class CSVToLua:
         self.global_string = {}
         self.write_flag = 1
         self.require_names = []
+        self.types = {}
+        self.heads = {}
 
 
     def setConfig(self, pos, is_need_key=False, is_need_index=False, is_save_string=False, **args):
@@ -98,11 +100,16 @@ class CSVToLua:
         self.is_need_key = is_need_key
         self.is_need_index = is_need_index
         self.is_save_string = is_save_string
+        self.is_multi_thread = False
+        self.is_require = False
 
         if 'require' in args:
             self.is_require = True
             if args['require'] and args['require'] == 'only': self.write_flag &= 2
             elif args['require'] and args['require'] == 'all': self.write_flag &= 1
+
+        if 'thread' in args:
+            self.is_multi_thread = True
 
 
     def set_writ_flag(self, flag):
@@ -216,16 +223,16 @@ class CSVToLua:
         return str.translate({34 : '\\"'})
 
 
-    def iter_csv_recursive(self, d):
+    def iter_csv_recursive(self, d, name):
         """
         parse customized data structure. e.g. vector<Sequence<int>>, ...
         """
         t = {}
         for k, v in d.items():
             if isinstance(v, dict):
-                t[k] = self.iter_csv_recursive(v)
+                t[k] = self.iter_csv_recursive(v, name)
             else:
-                _type = self.types[k]['FieldTypeName']
+                _type = self.types[name][k]['FieldTypeName']
                 _match = self.regex_type(_type)
                 if _type == 'string':
                     text = self.check_default(v, str, _type)
@@ -304,12 +311,13 @@ class CSVToLua:
         return -1
 
 
-    def get_primary_index(self):
+    def get_primary_index(self, name):
+        _name = self._extract_name(name)
         self.primary_index = {'idx' : -1, 'key' : None}
-        for k, v in self.types.items():
+        for k, v in self.types[_name].items():
             ## record primary index
-            if self.types[k]['IndexType'] == 1:
-                self.primary_index = {'idx' : self.types[k][self.pos_id], 'key' : k}
+            if self.types[_name][k]['IndexType'] == 1:
+                self.primary_index = {'idx' : self.types[_name][k][self.pos_id], 'key' : k}
                 return
 
 
@@ -330,7 +338,7 @@ class CSVToLua:
                     if v != '':
                         line += '{}={},'.format(k, v)
                 elif self.is_need_index:
-                    if len(v) != 0: line += '[{}]={},'.format(self.types[k][self.pos_id], v)
+                    if len(v) != 0: line += '[{}]={},'.format(self.types[name][k][self.pos_id], v)
                 else:
                     if len(v) != 0: line += '{},'.format(v)
             line = line[:-1] + '}\n'
@@ -348,8 +356,8 @@ class CSVToLua:
         # define default table
         s += '\n\nlocal __default_table = {'
         # index = 1
-        for key in sorted(self.heads.items(), key = lambda item : item[0]):
-            _type = self.types[key[1]]['FieldTypeName']
+        for key in sorted(self.heads[name].items(), key = lambda item : item[0]):
+            _type = self.types[name][key[1]]['FieldTypeName']
             # s += '{}={},'.format(key, index)
             default_value = self.base_type(_type)
             s += '{}={},'.format(key[1], default_value if default_value != '' else '\"\"')
@@ -359,8 +367,8 @@ class CSVToLua:
         # define table type enum for server
         if self.pos == 'server' or self.pos == 'client':
             s += '\n\nlocal head = {\n'
-            for key in sorted(self.heads.items(), key = lambda item : item[0]):
-                fields = self.types[key[1]]
+            for key in sorted(self.heads[name].items(), key = lambda item : item[0]):
+                fields = self.types[name][key[1]]
                 _pos = fields[self.pos_id]
                 enum, size = self.type_map_compile(fields['FieldTypeName'])
                 s += '  [{}]={{ need_local = {}, seq_size = {}, field_type = {} }},\n'.format(_pos, str(fields['NeedLocal']).lower(), size, enum)
@@ -378,7 +386,7 @@ class CSVToLua:
         s += 'end\n'
         if self.pos == 'server' or self.pos == 'client':
             s += 'local {} = {{head = head, data = t, bin_pos = {}, total_line_size = {}, col_size = {}}}'.format(
-                name, self.primary_index['idx'], len(obj), len(self.heads))
+                name, self.primary_index['idx'], len(obj), len(self.heads[name]))
         else:
             s += 'local {} = t'.format(name)
         s += '\nreturn {}\n'.format(name)
@@ -434,6 +442,10 @@ class CSVToLua:
                 w.write('ServerTable.{} = require \"{}\"\n'.format(name[:-4], name[:-4]))
             w.write('return ServerTable')
 
+    
+    def _extract_name(self, name):
+        return name if len(name.split('/')) == 1 else name.split('/')[1]
+
 
     def csv_to_lua(self):
         with open('.config', 'r') as f:
@@ -442,56 +454,81 @@ class CSVToLua:
             self._dir = dir_config.split('#')[1]
             self.json_dir = os.path.join(dir_config.split('#')[1], self.JSON)
             works = os.listdir(self.json_dir)
+            self._load_heads(works)
             
-            # TODO: process with multi-thread
-            # thread attemption
-            # with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            #     futures = [executor.submit(self._csv_to_lua, file=work) for work in works]
-            #     for future in concurrent.futures.as_completed(futures):
-            #         print(future.result())
-            progress = Progress(
+            self.progress = Progress(
                 TimeElapsedColumn(),
                 BarColumn(),
                 TextColumn('{task.description}')
             )
-
-            task_id = progress.add_task("", total=len(works))
-            with progress:
-                for work in works:
-                    descr = '[bold #FFC900](processing {}...)'.format(work[:-4])
-                    progress.update(task_id, description=descr)
-                    self._csv_to_lua(work)
-                    progress.update(task_id, advance=1)
+            # TODO: process with multi-process
+            self.task_id = self.progress.add_task("", total=len(works))
+            with self.progress:
+                if self.is_multi_thread:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+                        futures = [executor.submit(self._csv_to_lua, file=work) for work in works]
+                        for future in concurrent.futures.as_completed(futures):
+                            # if future.result() is not None:
+                            #     print(future.result())
+                            pass
+                else:
+                    for work in works:
+                        self._csv_to_lua(work)
 
                 if self.is_save_string: self.save_global_string()
                 if self.is_require: self.save_require()
-                # progress.console.log(f'save global string')
-                # final update for message on overall progress bar
-                progress.update(task_id, description='[bold green]process done!')
+
+                self.progress.update(self.task_id, description='[bold green]process done!')
+
+
+    def _load_heads(self, works):
+        def _load_fields(_data):
+            if _data is None: return
+            self.types[_data['MainTableName']] = {}
+            self.heads[_data['MainTableName']] = {}
+            for field in _data['Fields']:
+                # config for server or client
+                if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
+                    self.types[_data['MainTableName']][field['FieldName']] = field
+                    self.heads[_data['MainTableName']][field[self.pos_id]]= field['FieldName']
+
+        for file in works:
+            with open(os.path.join(self.json_dir, file), 'rb') as file:
+                data = json.load(file)
+                _load_fields(data)
+                children = data['Children']
+                if children:
+                    for child in children:
+                        _load_fields(child)
+
 
 
     def _csv_to_lua(self, file):
-        with open(os.path.join(self.json_dir, file), 'rb') as file:
+        
+        descr = '[bold #FFC900](processing {}...)'.format(file[:-5])
+        self.progress.update(self.task_id, description=descr)
+        self.progress.update(self.task_id, advance=1)
 
+        with open(os.path.join(self.json_dir, file), 'rb') as file:
             data = json.load(file)
             def process(data):
-                self.types = {}
-                self.heads = {}
                 if data is None: return
-                # load variable type
-                # if data['MainTableName'] != 'DailyActivitiesTable': return
-                for field in data['Fields']:
-                    # config for server or client
-                    if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
-                        self.types[field['FieldName']] = field
-                        self.heads[field[self.pos_id]]= field['FieldName']
-                def extract_table(name):
+                # self.types[data['MainTableName']] = {}
+                # self.heads[data['MainTableName']] = {}
+                # # load variable type
+                # # if data['MainTableName'] != 'DailyActivitiesTable': return
+                # for field in data['Fields']:
+                #     # config for server or client
+                #     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
+                #         self.types[data['MainTableName']][field['FieldName']] = field
+                #         self.heads[data['MainTableName']][field[self.pos_id]]= field['FieldName']
+                def extract_table(name, key):
                     # header adaptation
                     data = pd.read_csv(os.path.join(self._dir, self.TABLE, name)).drop([0])
-                    columns = list(set(data.columns.tolist()) - set(self.heads.values()))
+                    columns = list(set(data.columns.tolist()) - set(self.heads[key].values()))
                     data = data.drop(columns=columns)
                     data = data.dropna(axis=0, how='all')
-                    _heads = sorted(self.heads.items(), key = lambda item : item[0])
+                    _heads = sorted(self.heads[key].items(), key = lambda item : item[0])
                     data = data[[x[1] for x in _heads]]
                     return data
 
@@ -501,22 +538,22 @@ class CSVToLua:
                         os.remove(file_path)
 
                     # sort table if server
-                    self.get_primary_index()
+                    self.get_primary_index(name[:-4])
                     if self.pos == 'server':
                         try:
                             _index = self.primary_index['key']
                             if _index and not data.empty:
-                                _type = self.types[_index]['FieldTypeName']
+                                _type = self.types[name][_index]['FieldTypeName']
                                 data[_index] = data[_index].astype(int if _type in ['int', 'uint', 'long long'] else object)
                                 data.sort_values(_index, inplace=True)
                         except Exception as e:
                             print(f'{self.bcolors.FAIL} error while sort table: ' + name + f'{self.bcolors.RESET}')
 
                     lua_raw_data = data.to_dict('index')
-                    table = self.iter_csv_recursive(lua_raw_data)
+                    table = self.iter_csv_recursive(lua_raw_data, self._extract_name(name[:-4]))
                     try:
                         # print(f'processing {self.bcolors.OK}' + name + f'{self.bcolors.RESET} ...')
-                        if len(name.split('/')) == 2: name = name.split('/')[1]
+                        name = self._extract_name(name)
                         self.require_names.append(name)
                         if self.write_flag & 1:
                             with open(file_path, 'w', encoding='utf-8') as w:
@@ -527,13 +564,13 @@ class CSVToLua:
 
                 # process combined table
                 if len(data['TableLocations']) > 1:
-                    t = pd.concat([extract_table(v['ExcelPath']) for v in data['TableLocations']], ignore_index=True)
+                    t = pd.concat([extract_table(v['ExcelPath'], data['MainTableName']) for v in data['TableLocations']], ignore_index=True)
                     t.index += 1
                     process_one_table(data['MainTableName'] + '.csv', t)
                 else:
                     for item in data['TableLocations']:
                         name = item['ExcelPath']
-                        process_one_table(name, extract_table(name))
+                        process_one_table(name, extract_table(name, data['MainTableName']))
                     
             process(data)
             process(data['Children'][0] if data['Children'] else None) # process child table

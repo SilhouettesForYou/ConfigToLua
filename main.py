@@ -21,7 +21,7 @@ def main(argv):
     sys.setrecursionlimit(10000)
     args = argv[1:]
     try:
-        opts, args = getopt.getopt(args, 'hxcaf:kpis:', ['help', 'xml', 'csv', 'all', 'for=', 'key', 'pkg', 'index', 'string=', 'peel', 'copy', 'require='])
+        opts, args = getopt.getopt(args, 'hxcaf:kpis:', ['help', 'xml', 'csv', 'all', 'for=', 'key', 'pkg', 'index', 'string=', 'peel', 'copy', 'require=', 'thread'])
     except getopt.GetoptError as err:
         print(err)
         usage()
@@ -48,6 +48,8 @@ def main(argv):
             elif a == 'all': csv.set_writ_flag(1)
         elif o == '--require':
             args_for_csv[o[2:]] = a
+        elif o == '--thread':
+            args_for_csv[o[2:]] = True
         elif o in ('-x', '--xml'):
             xml.xml_to_lua()
         elif o in ('-c', '--csv'):
