@@ -137,7 +137,8 @@ class PeelDeprecatedModule:
             visitor.visit(tree)
             
             funcs, enums = visitor.get()
-
+            if len(funcs) != 0 or len(enums) != 1:
+                lines.append('\n\n')
             for func, args_list in funcs.items():
                 args_pattern = ['...' if isinstance(v, ast.Varargs) else v.id for v in args_list]
                 function_pattern = re.compile('function\s*{}\({}\).*'.format(func, ',\s*'.join(args_pattern)))
@@ -145,7 +146,9 @@ class PeelDeprecatedModule:
                 function_syntax, args_list = self.search_pattern(src, function_pattern, args_pattern)
                 if function_syntax:
                     # print(function_syntax)
-                    _add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
+                    # _add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
+                    _add_scope(function_syntax, 'local function {}({})\n'.format(func, args_list))
+                    lines.append('{}.{} = {}\n'.format(scope, func, func))
 
             for enum in enums:
                 enum_pattern = re.compile(r'[^local "]\b{}\b\s*[^=<>~]=[^=].*'.format(enum))
@@ -154,8 +157,9 @@ class PeelDeprecatedModule:
                     # print(enum_syntax, re.compile('\n{').search(enum_syntax))
                     if re.compile('\n{').search(enum_syntax):
                         enum_syntax = enum_syntax.split('\n')[0]
-                    _add_scope(enum_syntax, '{}.{}\n'.format(scope, enum_syntax.strip()))
-                    # _add_scope(enum_syntax, 'local {}\n'.format(enum_syntax))
+                    # _add_scope(enum_syntax, '{}.{}\n'.format(scope, enum_syntax.strip()))
+                    _add_scope(enum_syntax, 'local {}\n'.format(enum_syntax.strip()))
+                    lines.append('{}.{} = {}\n'.format(scope, enum, enum))
 
         except SyntaxException as e:
             print(scope)
@@ -184,7 +188,7 @@ class PeelDeprecatedModule:
                             os.mkdir(script_dir)
                     for f in fs:
                         if f.endswith('.lua'):
-                            # if f != 'LocalServerWarBpMgr.lua': continue
+                            if f != 'Color.lua': continue
                             script_dir = Path(os.path.join(self.SCRIPT_DIR, path[len(_dir) + 1:])).as_posix()
                             if not os.path.exists(script_dir) and not script_dir.startswith('.'):
                                 os.mkdir(script_dir)
