@@ -22,22 +22,44 @@ class PeelDeprecatedModule:
 
         def __init__(self) -> None:
             super().__init__()
-            self.function_names = {}
-            self.enum_names = []
+            self._global_functions = {}
+            self._anoymous_functions = {}
+            self._call_functions = {}
+            self._enum_names = []
 
         def visit_Function(self, node):
             if isinstance(node.name, ast.Name) and isinstance(node.args, ast.List):
-                self.function_names[str(node.name.id)] = node.args
+                self._global_functions[str(node.name.id)] = {'args' : node.args, 'line' : node.body}
 
         def visit_Assign(self, node):
-            for target in node.targets:
+            for target, value in zip(node.targets, node.values):
                 # if isinstance(target, ast.Name):
                 #     print(target.id, target.first_token.column)
-                if isinstance(target, ast.Name) and target.first_token.column == 0:
-                    self.enum_names.append(target.id)
+                if target.first_token.column == 0 and isinstance(target, ast.Name):
+                    if isinstance(value, ast.AnonymousFunction ):
+                        self._anoymous_functions[target.id] = {'args' : value.args, 'line' : target.line}
+                    elif isinstance(target, ast.Name):
+                        self._enum_names.append(target.id)
 
-        def get(self):
-            return self.function_names, self.enum_names
+        def visit_Call(self, node):
+            if isinstance(node.func, ast.Name):
+                self._call_functions[node.func.id] = node.args
+
+        @property
+        def global_functions(self) -> dict:
+            return self._global_functions
+
+        @property
+        def anoymous_functions(self) -> dict:
+            return self._anoymous_functions
+
+        @property
+        def call_functions(self) -> dict:
+            return self._call_functions
+
+        @property
+        def enum_names(self) -> list:
+            return self._enum_names
 
 
     def __init__(self):
@@ -50,16 +72,16 @@ class PeelDeprecatedModule:
         self.declared_pattern = re.compile('declareGlobal\("\w+", \w+(\.\w+){0,1}\)')
 
         self.special_files = {
-            'array' : [
-                {
-                    'lineno' : 1,
-                    'syntax' : '-- module("Common", package.seeall)'
-                },
-                {
-                    'lineno' : 8,
-                    'syntax' : 'Common.array = {}'
-                }
-            ],
+            # 'array' : [
+            #     {
+            #         'lineno' : 1,
+            #         'syntax' : '-- module("Common", package.seeall)'
+            #     },
+            #     {
+            #         'lineno' : 8,
+            #         'syntax' : 'Common.array = {}'
+            #     }
+            # ],
             'Main' : [
                 {
                     'lineno' : 13,
@@ -67,6 +89,10 @@ class PeelDeprecatedModule:
                 }
             ]
         }
+
+        if os.path.exists(self.SCRIPT_DIR):
+            shutil.rmtree(self.SCRIPT_DIR)
+        os.makedirs(self.SCRIPT_DIR)
 
     
     def set_config(self, **args):
@@ -89,6 +115,8 @@ class PeelDeprecatedModule:
 
 
     def write_content(self, content, path):
+        ## replace Color with UnityEngine.Color
+        content = re.sub(r'[^\.]\b[C]olor\b', ' UnityEngine.Color', content)
         with open(path, 'w', encoding='utf-8') as w:
             w.write(content)
 
@@ -130,25 +158,41 @@ class PeelDeprecatedModule:
             #     print(''.join(lines).find(old_syntax))
                 print('Syntax not found in [italic magenta]{}[/italic magenta]\nOld Syntax: [italic red]{}[/italic red]\nNew SynTax: [italic yellow]{}[/italic yellow]'.format(scope, old_syntax, new_syntax))
 
+        def _add_scope_greedily(calls, scope, funcs):
+            for i in range(len(lines)):
+                for call, attachment in calls.items():
+                    if call in funcs and i + 1 != funcs[call]['line']:
+                        lines[i] = re.sub(call, '{}.{}'.format(scope, call), lines[i])
+
         src = ''.join(lines)
         try:
             tree = ast.parse(src)
             visitor = self.FunctionVisitor()
             visitor.visit(tree)
             
-            funcs, enums = visitor.get()
-            if len(funcs) != 0 or len(enums) != 1:
-                lines.append('\n\n')
-            for func, args_list in funcs.items():
-                args_pattern = ['...' if isinstance(v, ast.Varargs) else v.id for v in args_list]
-                function_pattern = re.compile('function\s*{}\({}\).*'.format(func, ',\s*'.join(args_pattern)))
+            global_funcs = visitor.global_functions
+            anoymous_funcs = visitor.anoymous_functions
+            enums = visitor.enum_names
+            calls = visitor.call_functions
+
+            for func, attachment in anoymous_funcs.items():
+                args_pattern = ['...' if isinstance(v, ast.Varargs) else v.id for v in attachment['args']]
+                function_pattern = re.compile('function(\s*{}){{0,1}}\({}\).*'.format(func, ',\s*'.join(args_pattern)))
                 args_pattern = re.compile('\(.*\)')
                 function_syntax, args_list = self.search_pattern(src, function_pattern, args_pattern)
                 if function_syntax:
-                    # print(function_syntax)
-                    # _add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
-                    _add_scope(function_syntax, 'local function {}({})\n'.format(func, args_list))
-                    lines.append('{}.{} = {}\n'.format(scope, func, func))
+                    lines[attachment['line'] - 1] = '{}.{} = function({})\n'.format(scope, func, args_list)
+
+            for func, attachment in global_funcs.items():
+                args_pattern = ['...' if isinstance(v, ast.Varargs) else v.id for v in attachment['args']]
+                function_pattern = re.compile('function(\s*{}){{0,1}}\({}\).*'.format(func, ',\s*'.join(args_pattern)))
+                args_pattern = re.compile('\(.*\)')
+                function_syntax, args_list = self.search_pattern(src, function_pattern, args_pattern)
+                # print(function_syntax)
+                if function_syntax:
+                    _add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
+                    # _add_scope(function_syntax, 'local function {}({})\n'.format(func, args_list))
+                    # lines.append('{}.{} = {}\n'.format(scope, func, func))
 
             for enum in enums:
                 enum_pattern = re.compile(r'[^local "]\b{}\b\s*[^=<>~]=[^=].*'.format(enum))
@@ -157,9 +201,11 @@ class PeelDeprecatedModule:
                     # print(enum_syntax, re.compile('\n{').search(enum_syntax))
                     if re.compile('\n{').search(enum_syntax):
                         enum_syntax = enum_syntax.split('\n')[0]
-                    # _add_scope(enum_syntax, '{}.{}\n'.format(scope, enum_syntax.strip()))
-                    _add_scope(enum_syntax, 'local {}\n'.format(enum_syntax.strip()))
-                    lines.append('{}.{} = {}\n'.format(scope, enum, enum))
+                    _add_scope(enum_syntax, '{}.{}\n'.format(scope, enum_syntax.strip()))
+                    # _add_scope(enum_syntax, 'local {}\n'.format(enum_syntax.strip()))
+                    # lines.append('{}.{} = {}\n'.format(scope, enum, enum))
+
+            _add_scope_greedily(calls, scope, anoymous_funcs)
 
         except SyntaxException as e:
             print(scope)
@@ -184,13 +230,13 @@ class PeelDeprecatedModule:
                     for __dir in dirs:
                         script_dir = Path(os.path.join(self.SCRIPT_DIR, path[len(_dir) + 1:])).as_posix()
                         script_dir = Path(os.path.join(script_dir, __dir)).as_posix()
-                        if not os.path.exists(script_dir) and not script_dir.startswith('.'):
+                        if not os.path.exists(script_dir) and not script_dir.split('/')[-1].startswith('.'):
                             os.mkdir(script_dir)
                     for f in fs:
                         if f.endswith('.lua'):
-                            if f != 'Color.lua': continue
+                            
                             script_dir = Path(os.path.join(self.SCRIPT_DIR, path[len(_dir) + 1:])).as_posix()
-                            if not os.path.exists(script_dir) and not script_dir.startswith('.'):
+                            if not os.path.exists(script_dir) and not script_dir.split('/')[-1].startswith('.'):
                                 os.mkdir(script_dir)
                             with open(os.path.join(path, f), 'r', encoding='utf-8') as file:
                                 descr = '[bold #FFC900]Commented Code: {}...'.format(f)
@@ -216,6 +262,8 @@ class PeelDeprecatedModule:
 
                                 if process_special_files(f[:-4]):
                                    continue
+
+                                if f != 'Color.lua': continue
                                         
                                 ## I search pattern with function `module``
                                 module_syntax, module_name = self.search_pattern(content, self.modules_pattern, self.name_pattern)
@@ -230,11 +278,12 @@ class PeelDeprecatedModule:
                                     ## III search pattern with `class`
                                     class_syntax, class_name = self.search_pattern(content, self.class_pattern, self.name_pattern)
                                     if class_syntax and class_name:
-                                        declare_global_syntax = 'local {}\n{}.{} = {}\n'.format(class_syntax, module_name, class_name, class_name)
+                                        declare_global_syntax = 'local {}\n{}.{} = {}\n\n'.format(class_syntax, module_name, class_name, class_name)
                                         annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
                                         annotation_module(class_syntax, declare_global_syntax)
                                         self.write_content(''.join(lines), _path)
                                     else:
+                                        pass
                                         ## IV not exist declaration `class`
                                         annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
                                         self.write_content(self.add_scope(lines, module_name), _path)
