@@ -89,31 +89,37 @@ class CSVToLua:
         self.heads = {}
 
 
-    def setConfig(self, pos, is_need_key=False, is_need_index=False, is_save_string=False, **args):
-        self.pos = pos
+    def setConfig(self, **args):
+        
+        self.pos = 'client'
         self.pos_id = 'ClientPosID'
-        if self.pos == 'server': self.pos_id = 'ServerPosID'
-        elif self.pos == 'client': self.pos_id = 'ClientPosID'
-        if not os.path.exists(self.LUA.format(self.pos)):
-            os.mkdir(self.LUA.format(self.pos))
-
-        self.is_need_key = is_need_key
-        self.is_need_index = is_need_index
-        self.is_save_string = is_save_string
+        self.is_need_key = False
+        self.is_need_index = False
+        self.is_save_string = False
         self.is_multi_thread = False
         self.is_require = False
+
+        if 'for' in args:
+            self.pos = args['for']
+            if not os.path.exists(self.LUA.format(self.pos)):
+                os.mkdir(self.LUA.format(self.pos))
+            if self.pos == 'server': self.pos_id = 'ServerPosID'
+            elif self.pos == 'client': self.pos_id = 'ClientPosID'
+
+        self.is_need_key = 'key' in args
+        self.is_need_index = 'index' in args
+
+        if 'string' in args:
+            self.is_save_string = True
+            if args['require'] and args['require'] == 'only': self.write_flag &= 2
+            elif args['require'] and args['require'] == 'all': self.write_flag &= 1
 
         if 'require' in args:
             self.is_require = True
             if args['require'] and args['require'] == 'only': self.write_flag &= 2
             elif args['require'] and args['require'] == 'all': self.write_flag &= 1
 
-        if 'thread' in args:
-            self.is_multi_thread = True
-
-
-    def set_writ_flag(self, flag):
-        self.write_flag &= flag
+        self.is_multi_thread = 'thread' in args
 
 
     def generate_index(self):
@@ -500,7 +506,6 @@ class CSVToLua:
                 if children:
                     for child in children:
                         _load_fields(child)
-
 
 
     def _csv_to_lua(self, file):
