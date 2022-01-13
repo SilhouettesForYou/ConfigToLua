@@ -264,6 +264,7 @@ class PeelDeprecatedModule:
                                     if module_name not in self.root_modules:
                                         self.root_modules[module_name] = 0
                                     self.root_modules[module_name] += 1
+                                    # if 'System' in module_name: print(module_name, module_syntax, f)
                                     ## II search pattern with `declare global`
                                     declare_syntax, declare_name = self.search_pattern(content, self.declared_pattern, self.name_pattern)
                                     if declare_syntax and declare_name:
@@ -306,7 +307,7 @@ class PeelDeprecatedModule:
             res = pattern.findall(g)
             if res and res[0] not in unique_module:
                 unique_module.add(res[0])
-                if res[0] in self.root_modules: lines.append('\n{} = {{}}\nmakeGlobal({})'.format(res[0], res[0]))
+                if res[0] in self.root_modules: lines.append('\n{} = {} or {{}}\nmakeGlobal({})'.format(res[0], res[0], res[0]))
                 else: lines.append('\n{} = {{}}'.format(res[0]))
             if res and len(res) == 2:
                 lines.append('{}.{} = {{}}\nmakeGlobal({}.{})'.format(res[0], res[1], res[0], res[1]))
