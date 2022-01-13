@@ -548,7 +548,7 @@ class CSVToLua:
                         try:
                             _index = self.primary_index['key']
                             if _index and not data.empty:
-                                _type = self.types[name][_index]['FieldTypeName']
+                                _type = self.types[self._extract_name(name[:-4])][_index]['FieldTypeName']
                                 data[_index] = data[_index].astype(int if _type in ['int', 'uint', 'long long'] else object)
                                 data.sort_values(_index, inplace=True)
                         except Exception as e:
