@@ -115,8 +115,6 @@ class PeelDeprecatedModule:
 
 
     def write_content(self, content, path):
-        ## replace Color with UnityEngine.Color
-        content = re.sub(r'[^\.]\b[C]olor\b', ' UnityEngine.Color', content)
         with open(path, 'w', encoding='utf-8') as w:
             w.write(content)
 
@@ -258,7 +256,7 @@ class PeelDeprecatedModule:
                                 if process_special_files(f[:-4]):
                                    continue
 
-                                if f != 'Color.lua': continue
+                                # if f != 'Color.lua': continue
                                         
                                 ## I search pattern with function `module``
                                 module_syntax, module_name = self.search_pattern(content, self.modules_pattern, self.name_pattern)
@@ -277,11 +275,6 @@ class PeelDeprecatedModule:
                                         annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
                                         annotation_module(class_syntax, declare_global_syntax)
                                         self.write_content(''.join(lines), _path)
-                                    else:
-                                        pass
-                                        ## IV not exist declaration `class`
-                                        annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
-                                        self.write_content(self.add_scope(lines, module_name), _path)
                                 progress.update(task_id, advance=1)
                 progress.update(task_id, description='[bold green]process done!')
 
@@ -313,7 +306,8 @@ class PeelDeprecatedModule:
             res = pattern.findall(g)
             if res and res[0] not in unique_module:
                 unique_module.add(res[0])
-                lines.append('\n{} = {{}}\nmakeGlobal({})'.format(res[0], res[0]))
+                if res[0] in self.root_modules: lines.append('\n{} = {{}}\nmakeGlobal({})'.format(res[0], res[0]))
+                else: lines.append('\n{} = {{}}'.format(res[0]))
             if res and len(res) == 2:
                 lines.append('{}.{} = {{}}\nmakeGlobal({}.{})'.format(res[0], res[1], res[0], res[1]))
 
