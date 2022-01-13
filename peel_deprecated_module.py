@@ -150,12 +150,6 @@ class PeelDeprecatedModule:
             if index:
                 lines[index] = new_syntax
             else:
-            # try:
-            #     index = lines.index(old_syntax + '\n')
-            #     lines[index] = new_syntax
-            # except ValueError as e:
-            #     print(lines[20], old_syntax)
-            #     print(''.join(lines).find(old_syntax))
                 print('Syntax not found in [italic magenta]{}[/italic magenta]\nOld Syntax: [italic red]{}[/italic red]\nNew SynTax: [italic yellow]{}[/italic yellow]'.format(scope, old_syntax, new_syntax))
 
         def _add_scope_greedily(calls, scope, funcs):
@@ -163,6 +157,13 @@ class PeelDeprecatedModule:
                 for call, attachment in calls.items():
                     if call in funcs and i + 1 != funcs[call]['line']:
                         lines[i] = re.sub(call, '{}.{}'.format(scope, call), lines[i])
+
+        def _search_func_and_replace(func, attachment):
+            args_pattern = ['...' if isinstance(v, ast.Varargs) else v.id for v in attachment['args']]
+            function_pattern = re.compile('function(\s*{}){{0,1}}\({}\).*'.format(func, ',\s*'.join(args_pattern)))
+            args_pattern = re.compile('\(.*\)')
+            return self.search_pattern(src, function_pattern, args_pattern)
+
 
         src = ''.join(lines)
         try:
@@ -176,18 +177,12 @@ class PeelDeprecatedModule:
             calls = visitor.call_functions
 
             for func, attachment in anoymous_funcs.items():
-                args_pattern = ['...' if isinstance(v, ast.Varargs) else v.id for v in attachment['args']]
-                function_pattern = re.compile('function(\s*{}){{0,1}}\({}\).*'.format(func, ',\s*'.join(args_pattern)))
-                args_pattern = re.compile('\(.*\)')
-                function_syntax, args_list = self.search_pattern(src, function_pattern, args_pattern)
+                function_syntax, args_list = _search_func_and_replace(func, attachment)
                 if function_syntax:
                     lines[attachment['line'] - 1] = '{}.{} = function({})\n'.format(scope, func, args_list)
 
             for func, attachment in global_funcs.items():
-                args_pattern = ['...' if isinstance(v, ast.Varargs) else v.id for v in attachment['args']]
-                function_pattern = re.compile('function(\s*{}){{0,1}}\({}\).*'.format(func, ',\s*'.join(args_pattern)))
-                args_pattern = re.compile('\(.*\)')
-                function_syntax, args_list = self.search_pattern(src, function_pattern, args_pattern)
+                function_syntax, args_list = _search_func_and_replace(func, attachment)
                 # print(function_syntax)
                 if function_syntax:
                     _add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
