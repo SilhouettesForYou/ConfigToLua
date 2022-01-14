@@ -184,8 +184,6 @@ class PeelDeprecatedModule:
                 # print(function_syntax)
                 if function_syntax:
                     _add_scope(function_syntax, 'function {}.{}({})\n'.format(scope, func, args_list))
-                    # _add_scope(function_syntax, 'local function {}({})\n'.format(func, args_list))
-                    # lines.append('{}.{} = {}\n'.format(scope, func, func))
 
             for enum in enums:
                 enum_pattern = re.compile(r'[^local "]\b{}\b\s*[^=<>~]=[^=].*'.format(enum))
@@ -195,10 +193,47 @@ class PeelDeprecatedModule:
                     if re.compile('\n{').search(enum_syntax):
                         enum_syntax = enum_syntax.split('\n')[0]
                     _add_scope(enum_syntax, '{}.{}\n'.format(scope, enum_syntax.strip()))
-                    # _add_scope(enum_syntax, 'local {}\n'.format(enum_syntax.strip()))
-                    # lines.append('{}.{} = {}\n'.format(scope, enum, enum))
 
             _add_scope_greedily(calls, scope, anoymous_funcs)
+
+        except SyntaxException as e:
+            print(scope)
+
+        return ''.join(lines)
+
+
+    def add_class_scope(self, lines, scope):
+
+        def _add_scope(old_syntax, new_syntax):
+            index = self._index_of(lines, old_syntax)
+            if index:
+                lines[index] = new_syntax
+            else:
+                print('Syntax not found in [italic magenta]{}[/italic magenta]\nOld Syntax: [italic red]{}[/italic red]\nNew SynTax: [italic yellow]{}[/italic yellow]'.format(scope, old_syntax, new_syntax))
+
+        src = ''.join(lines)
+        try:
+            tree = ast.parse(src)
+            visitor = self.FunctionVisitor()
+            visitor.visit(tree)
+            
+            enums = visitor.enum_names
+
+            for enum in enums:
+                enum_pattern = re.compile(r'[^local "]\b{}\b\s*[^=<>~]=[^=].*'.format(enum))
+                enum_syntax, _ = self.search_pattern(src, enum_pattern)
+                if enum_syntax:
+                    # print(enum_syntax, re.compile('\n{').search(enum_syntax))
+                    if re.compile('\n{').search(enum_syntax):
+                        enum_syntax = enum_syntax.split('\n')[0]
+                    _add_scope(enum_syntax, 'local {}\n'.format(enum_syntax.strip()))
+
+            # for i in range(len(lines) - 1, 0, 1):
+            #     if 'return' in lines[i]:
+            #         lines[i] = 'setmetatable({}, {__index = t_in_class})\n{}'.format(scope, lines[i])
+            #         break
+            #     elif 'end' in lines[i]:
+            #         lines[i] = '{}\nsetmetatable({}, {__index = t_in_class})'.format(lines[i])
 
         except SyntaxException as e:
             print(scope)
@@ -256,7 +291,7 @@ class PeelDeprecatedModule:
                                 if process_special_files(f[:-4]):
                                    continue
 
-                                # if f != 'Color.lua': continue
+                                if f != 'UIGroupDefine.lua': continue
                                         
                                 ## I search pattern with function `module``
                                 module_syntax, module_name = self.search_pattern(content, self.modules_pattern, self.name_pattern)
@@ -275,7 +310,7 @@ class PeelDeprecatedModule:
                                         declare_global_syntax = 'local {}\n{}.{} = {}\n\n'.format(class_syntax, module_name, class_name, class_name)
                                         annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
                                         annotation_module(class_syntax, declare_global_syntax)
-                                        self.write_content(''.join(lines), _path)
+                                        self.write_content(self.add_class_scope(lines, module_name), _path)
                                 progress.update(task_id, advance=1)
                 progress.update(task_id, description='[bold green]process done!')
 
