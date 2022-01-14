@@ -120,6 +120,12 @@ class CSVToLua:
             elif args['require'] and args['require'] == 'all': self.write_flag &= 1
 
         self.is_multi_thread = 'thread' in args
+        
+        with open('.config', 'r') as f:
+            lines = f.readlines()
+            dir_config = lines[0].strip()
+            self._dir = dir_config.split('#')[1]
+            self.json_dir = os.path.join(dir_config.split('#')[1], self.JSON)
 
 
     def generate_index(self):
@@ -442,7 +448,7 @@ class CSVToLua:
 
     
     def save_require(self):
-        with open(self.LUA.format(self.pos) + 'TableInit.lua', 'w') as w:
+        with open(self.LUA.format(self.pos) + 'init.lua', 'w') as w:
             w.write('local ServerTable = {}\n')
             for name in self.require_names:
                 w.write('ServerTable.{} = require \"{}\"\n'.format(name[:-4], name[:-4]))
@@ -454,37 +460,32 @@ class CSVToLua:
 
 
     def csv_to_lua(self):
-        with open('.config', 'r') as f:
-            lines = f.readlines()
-            dir_config = lines[0].strip()
-            self._dir = dir_config.split('#')[1]
-            self.json_dir = os.path.join(dir_config.split('#')[1], self.JSON)
-            works = os.listdir(self.json_dir)
-            self._load_heads(works)
+        works = os.listdir(self.json_dir)
+        self._load_heads(works)
             
-            self.progress = Progress(
-                TimeElapsedColumn(),
-                BarColumn(),
-                TextColumn('{task.description}')
-            )
-            # TODO: process with multi-process
-            self.task_id = self.progress.add_task("", total=len(works))
-            with self.progress:
-                if self.is_multi_thread:
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
-                        futures = [executor.submit(self._csv_to_lua, file=work) for work in works]
-                        for future in concurrent.futures.as_completed(futures):
-                            # if future.result() is not None:
-                            #     print(future.result())
-                            pass
-                else:
-                    for work in works:
-                        self._csv_to_lua(work)
+        self.progress = Progress(
+            TimeElapsedColumn(),
+            BarColumn(),
+            TextColumn('{task.description}')
+        )
+        # TODO: process with multi-process
+        self.task_id = self.progress.add_task("", total=len(works))
+        with self.progress:
+            if self.is_multi_thread:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+                    futures = [executor.submit(self._csv_to_lua, file=work) for work in works]
+                    for future in concurrent.futures.as_completed(futures):
+                        # if future.result() is not None:
+                        #     print(future.result())
+                        pass
+            else:
+                for work in works:
+                    self._csv_to_lua(work)
 
-                if self.is_save_string: self.save_global_string()
-                if self.is_require: self.save_require()
+            if self.is_save_string: self.save_global_string()
+            if self.is_require: self.save_require()
 
-                self.progress.update(self.task_id, description='[bold green]process done!')
+            self.progress.update(self.task_id, description='[bold green]process done!')
 
 
     def _load_heads(self, works):
@@ -507,6 +508,10 @@ class CSVToLua:
                 if children:
                     for child in children:
                         if child: _load_fields(data, child['MainTableName'])
+
+    
+    def get_heads(self):
+        return self.types, self.heads
 
 
     def _csv_to_lua(self, file):
