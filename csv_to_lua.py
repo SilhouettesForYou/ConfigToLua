@@ -488,28 +488,29 @@ class CSVToLua:
 
 
     def _load_heads(self, works):
-        def _load_fields(_data):
+        def _load_fields(_data, _name=None):
             if _data is None: return
-            self.types[_data['MainTableName']] = {}
-            self.heads[_data['MainTableName']] = {}
+            name = _name if _name is not None else _data['MainTableName']
+            self.types[name] = {}
+            self.heads[name] = {}
             for field in _data['Fields']:
                 # config for server or client
                 if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
-                    self.types[_data['MainTableName']][field['FieldName']] = field
-                    self.heads[_data['MainTableName']][field[self.pos_id]]= field['FieldName']
+                    self.types[name][field['FieldName']] = field
+                    self.heads[name][field[self.pos_id]]= field['FieldName']
 
-        for file in works:
-            with open(os.path.join(self.json_dir, file), 'rb') as file:
+        for f in works:
+            with open(os.path.join(self.json_dir, f), 'rb') as file:
                 data = json.load(file)
                 _load_fields(data)
                 children = data['Children']
                 if children:
                     for child in children:
-                        _load_fields(child)
+                        if child: _load_fields(data, child['MainTableName'])
 
 
     def _csv_to_lua(self, file):
-        
+        # if file[:-5] != 'BuffEffectTable': return
         descr = '[bold #FFC900](processing {}...)'.format(file[:-5])
         self.progress.update(self.task_id, description=descr)
         self.progress.update(self.task_id, advance=1)
@@ -518,15 +519,6 @@ class CSVToLua:
             data = json.load(file)
             def process(data):
                 if data is None: return
-                # self.types[data['MainTableName']] = {}
-                # self.heads[data['MainTableName']] = {}
-                # # load variable type
-                # # if data['MainTableName'] != 'DailyActivitiesTable': return
-                # for field in data['Fields']:
-                #     # config for server or client
-                #     if self.pos == 'server' and field['ForServer'] or self.pos == 'client' and field['ForClient']:
-                #         self.types[data['MainTableName']][field['FieldName']] = field
-                #         self.heads[data['MainTableName']][field[self.pos_id]]= field['FieldName']
                 def extract_table(name, key):
                     # header adaptation
                     data = pd.read_csv(os.path.join(self._dir, self.TABLE, name)).drop([0])
