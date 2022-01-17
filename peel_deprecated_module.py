@@ -27,6 +27,9 @@ class PeelDeprecatedModule:
             self._call_functions = {}
             self._enum_names = []
 
+        def set_filter(self, filter_func):
+            self.filter = filter_func
+
         def visit_Function(self, node):
             if isinstance(node.name, ast.Name) and isinstance(node.args, ast.List):
                 self._global_functions[str(node.name.id)] = {'args' : node.args, 'line' : node.body}
@@ -39,7 +42,8 @@ class PeelDeprecatedModule:
                     if isinstance(value, ast.AnonymousFunction ):
                         self._anoymous_functions[target.id] = {'args' : value.args, 'line' : target.line}
                     elif isinstance(target, ast.Name):
-                        self._enum_names.append(target.id)
+                        if self.filter is None or self.filter and self.filter(value):
+                            self._enum_names.append(target.id)
 
         def visit_Call(self, node):
             if isinstance(node.func, ast.Name):
@@ -70,6 +74,8 @@ class PeelDeprecatedModule:
         self.name_pattern = re.compile('"\w+(\.\w+){0,1}"')
         self.class_pattern = re.compile('\w+\s*=\s*class\("\w+"(, \w+){0,1}\)')
         self.declared_pattern = re.compile('declareGlobal\("\w+", \w+(\.\w+){0,1}\)')
+        self.mt_name = 'GlobalTablesInClass'
+        self.mt = '\nlocal ' + self.mt_name + ' = {}\n'
 
         self.special_files = {
             # 'array' : [
@@ -211,29 +217,39 @@ class PeelDeprecatedModule:
             else:
                 print('Syntax not found in [italic magenta]{}[/italic magenta]\nOld Syntax: [italic red]{}[/italic red]\nNew SynTax: [italic yellow]{}[/italic yellow]'.format(scope, old_syntax, new_syntax))
 
+        def _search_references(enum):
+            for i in range(len(lines)):
+                lines[i].sub(enum, '{}.{}'.format(self.mt_name, lines[i]))
         src = ''.join(lines)
         try:
             tree = ast.parse(src)
             visitor = self.FunctionVisitor()
+            visitor.set_filter(lambda node : not isinstance(node, ast.Call))
             visitor.visit(tree)
             
             enums = visitor.enum_names
 
-            for enum in enums:
-                enum_pattern = re.compile(r'[^local "]\b{}\b\s*[^=<>~]=[^=].*'.format(enum))
+            for i in range(len(enums)):
+                enum_pattern = re.compile(r'[^local "]\b{}\b\s*[^=<>~]=[^=].*'.format(enums[i]))
                 enum_syntax, _ = self.search_pattern(src, enum_pattern)
                 if enum_syntax:
-                    # print(enum_syntax, re.compile('\n{').search(enum_syntax))
-                    if re.compile('\n{').search(enum_syntax):
-                        enum_syntax = enum_syntax.split('\n')[0]
-                    _add_scope(enum_syntax, 'local {}\n'.format(enum_syntax.strip()))
+                    if enum_syntax.endswith('\n{'):
+                        enum_syntax = ''.join(enum_syntax.split('\n')[:-1])
+                    # print(enum_syntax)
+                    _add_scope(enum_syntax, '{}{}.{}\n'.format(self.mt if i == 0 else '', self.mt_name, enum_syntax.strip()))
 
-            # for i in range(len(lines) - 1, 0, 1):
-            #     if 'return' in lines[i]:
-            #         lines[i] = 'setmetatable({}, {__index = t_in_class})\n{}'.format(scope, lines[i])
-            #         break
-            #     elif 'end' in lines[i]:
-            #         lines[i] = '{}\nsetmetatable({}, {__index = t_in_class})'.format(lines[i])
+
+            if len(enums) > 0:
+                print(enums)
+                length = len(lines)
+                _lines = lines[::-1]
+                for i in range(length):
+                    if 'return' in _lines[i]:
+                        lines[length - i - 1] = 'setmetatable({}, {{__index = {}}})\n\n{}'.format(scope, self.mt_name, _lines[i])
+                        break
+                    elif 'end' in _lines[i]:
+                        lines[length - i - 1] = '{}\nsetmetatable({}, {{__index = {}}})\n'.format(_lines[i], scope, self.mt_name)
+                        break
 
         except SyntaxException as e:
             print(scope)
@@ -291,7 +307,7 @@ class PeelDeprecatedModule:
                                 if process_special_files(f[:-4]):
                                    continue
 
-                                if f != 'UIGroupDefine.lua': continue
+                                # if f != 'CoProcessor.lua': continue
                                         
                                 ## I search pattern with function `module``
                                 module_syntax, module_name = self.search_pattern(content, self.modules_pattern, self.name_pattern)
@@ -310,7 +326,7 @@ class PeelDeprecatedModule:
                                         declare_global_syntax = 'local {}\n{}.{} = {}\n\n'.format(class_syntax, module_name, class_name, class_name)
                                         annotation_module(module_syntax, '-- {}\n'.format(module_syntax))
                                         annotation_module(class_syntax, declare_global_syntax)
-                                        self.write_content(self.add_class_scope(lines, module_name), _path)
+                                        self.write_content(self.add_class_scope(lines, class_name), _path)
                                 progress.update(task_id, advance=1)
                 progress.update(task_id, description='[bold green]process done!')
 
