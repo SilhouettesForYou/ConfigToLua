@@ -4,8 +4,10 @@ Table-server/
 table-server/
 SkillData/
 script/
+skill-table/
 .vscode/
 __pycache__/
 *.rar
 *.cpp
 *.csv
+SkillTable.lua

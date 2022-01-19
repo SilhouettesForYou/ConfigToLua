@@ -111,8 +111,8 @@ class CSVToLua:
 
         if 'string' in args:
             self.is_save_string = True
-            if args['require'] and args['require'] == 'only': self.write_flag &= 2
-            elif args['require'] and args['require'] == 'all': self.write_flag &= 1
+            if args['string'] and args['string'] == 'only': self.write_flag &= 2
+            elif args['string'] and args['string'] == 'all': self.write_flag &= 1
 
         if 'require' in args:
             self.is_require = True
@@ -219,6 +219,7 @@ class CSVToLua:
         """
         regex customized data structure.
         """
+        if not str: return ''
         if re.match('Sequence<[a-z]*, [1-9]\d*>$', str):
             return self.arg_type('s', str)
         elif re.match('vector<[a-z]*>$', str):
@@ -235,16 +236,16 @@ class CSVToLua:
         return str.translate({34 : '\\"'})
 
 
-    def iter_csv_recursive(self, d, name):
+    def iter_csv_recursive(self, d, name, types = None):
         """
         parse customized data structure. e.g. vector<Sequence<int>>, ...
         """
         t = {}
         for k, v in d.items():
             if isinstance(v, dict):
-                t[k] = self.iter_csv_recursive(v, name)
+                t[k] = self.iter_csv_recursive(v, name, types)
             else:
-                _type = self.types[name][k]['FieldTypeName']
+                _type = types[k]['FieldTypeName'] if types else self.types[name][k]['FieldTypeName']
                 _match = self.regex_type(_type)
                 if _type == 'string':
                     text = self.check_default(v, str, _type)
@@ -333,7 +334,7 @@ class CSVToLua:
                 return
 
 
-    def compress_lua(self, obj, name):
+    def compress_lua(self, obj, name, types = None):
         s = 'local t = {}\n'
 
         i = 1
@@ -350,7 +351,7 @@ class CSVToLua:
                     if v != '':
                         line += '{}={},'.format(k, v)
                 elif self.is_need_index:
-                    if len(v) != 0: line += '[{}]={},'.format(self.types[name][k][self.pos_id], v)
+                    if len(v) != 0: line += '[{}]={},'.format(types[k]['Pos'] if types else self.types[name][k][self.pos_id], v)
                 else:
                     if len(v) != 0: line += '{},'.format(v)
             line = line[:-1] + '}\n'
@@ -368,16 +369,17 @@ class CSVToLua:
         # define default table
         s += '\n\nlocal __default_table = {'
         # index = 1
-        for key in sorted(self.heads[name].items(), key = lambda item : item[0]):
-            _type = self.types[name][key[1]]['FieldTypeName']
+        _heads = types.keys() if types else sorted(self.heads[name].items(), key = lambda item : item[0])
+        for key in _heads:
+            _type = types[key]['FieldTypeName'] if types else self.types[name][key[1]]['FieldTypeName']
             # s += '{}={},'.format(key, index)
             default_value = self.base_type(_type)
-            s += '{}={},'.format(key[1], default_value if default_value != '' else '\"\"')
+            s += '{}={},'.format(key if types else key[1], default_value if default_value != '' else '\"\"')
             # index += 1
         s = (s[:-1] if s[-1] == ',' else s) + '}\n' ### generate empty tabel possibly
 
         # define table type enum for server
-        if self.pos == 'server' or self.pos == 'client':
+        if (self.pos == 'server' or self.pos == 'client' and not types):
             s += '\n\nlocal head = {\n'
             for key in sorted(self.heads[name].items(), key = lambda item : item[0]):
                 fields = self.types[name][key[1]]
@@ -396,7 +398,7 @@ class CSVToLua:
         s += '\tend\n'
         # s += '\tbase.__metatable = false\n'
         s += 'end\n'
-        if self.pos == 'server' or self.pos == 'client':
+        if (self.pos == 'server' or self.pos == 'client') and not types:
             s += 'local {} = {{head = head, data = t, bin_pos = {}, total_line_size = {}, col_size = {}}}'.format(
                 name, self.primary_index['idx'], len(obj), len(self.heads[name]))
         else:

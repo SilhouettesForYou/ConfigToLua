@@ -3,6 +3,8 @@ function _load(src)
     return require(src)
 end
 
+_load('SkillTable')
+
 -- local t = _load('table-server.ItemAchievingTypeTable')
 -- print(#t)
 
