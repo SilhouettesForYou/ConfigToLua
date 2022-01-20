@@ -1,0 +1,244 @@
+{
+    "root": {
+        "data": {
+            "id": "chaf355k7q80",
+            "created": 1642673302116,
+            "text": "编辑技能动画",
+            "resource": []
+        },
+        "children": [
+            {
+                "data": {
+                    "id": "chaf5741qso0",
+                    "created": 1642673463106,
+                    "text": "职业相关",
+                    "priority": null,
+                    "progress": null,
+                    "resource": [],
+                    "layout": null
+                },
+                "children": [
+                    {
+                        "data": {
+                            "id": "chaf7qg2vq80",
+                            "created": 1642673661921,
+                            "text": "A",
+                            "layout": null
+                        },
+                        "children": [
+                            {
+                                "data": {
+                                    "id": "chafuiqugmw0",
+                                    "created": 1642675447533,
+                                    "text": "..."
+                                },
+                                "children": []
+                            }
+                        ]
+                    },
+                    {
+                        "data": {
+                            "id": "chaf7unze6w0",
+                            "created": 1642673671106,
+                            "text": "B",
+                            "layout": null
+                        },
+                        "children": [
+                            {
+                                "data": {
+                                    "id": "chafun5uoso0",
+                                    "created": 1642675457148,
+                                    "text": "..."
+                                },
+                                "children": []
+                            }
+                        ]
+                    },
+                    {
+                        "data": {
+                            "id": "chaf7wtvmn40",
+                            "created": 1642673675816,
+                            "text": "C",
+                            "layout": null
+                        },
+                        "children": [
+                            {
+                                "data": {
+                                    "id": "chafb3f98yo0",
+                                    "created": 1642673925262,
+                                    "text": "加载人物模型",
+                                    "layout_right_offset": {
+                                        "x": 12,
+                                        "y": 25
+                                    }
+                                },
+                                "children": [
+                                    {
+                                        "data": {
+                                            "id": "chafbhlmpy00",
+                                            "created": 1642673956122,
+                                            "text": "武器"
+                                        },
+                                        "children": [
+                                            {
+                                                "data": {
+                                                    "id": "chafblp9ejc0",
+                                                    "created": 1642673965049,
+                                                    "text": "a"
+                                                },
+                                                "children": [
+                                                    {
+                                                        "data": {
+                                                            "id": "chafuvwzuwg0",
+                                                            "created": 1642675476203,
+                                                            "text": "..."
+                                                        },
+                                                        "children": []
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "data": {
+                                                    "id": "chafbonraeg0",
+                                                    "created": 1642673971488,
+                                                    "text": "b"
+                                                },
+                                                "children": [
+                                                    {
+                                                        "data": {
+                                                            "id": "chafni7nf340",
+                                                            "created": 1642674897824,
+                                                            "text": "有木桩"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "data": {
+                                                                    "id": "chafnvv1e0g0",
+                                                                    "created": 1642674927536,
+                                                                    "text": "单体"
+                                                                },
+                                                                "children": [
+                                                                    {
+                                                                        "data": {
+                                                                            "id": "chafsf6pd0o0",
+                                                                            "created": 1642675283057,
+                                                                            "text": "根据时间轴添加各种动画组件"
+                                                                        },
+                                                                        "children": [
+                                                                            {
+                                                                                "data": {
+                                                                                    "id": "chafv285ok00",
+                                                                                    "created": 1642675489939,
+                                                                                    "text": "..."
+                                                                                },
+                                                                                "children": []
+                                                                            }
+                                                                        ]
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "data": {
+                                                                    "id": "chafs0vw4b40",
+                                                                    "created": 1642675251928,
+                                                                    "text": "群体"
+                                                                },
+                                                                "children": [
+                                                                    {
+                                                                        "data": {
+                                                                            "id": "chafuycu3ts0",
+                                                                            "created": 1642675481515,
+                                                                            "text": "..."
+                                                                        },
+                                                                        "children": []
+                                                                    }
+                                                                ]
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "data": {
+                                                            "id": "chafru9rktc0",
+                                                            "created": 1642675237529,
+                                                            "text": "无木桩"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "data": {
+                                                                    "id": "chafuzv2jfk0",
+                                                                    "created": 1642675484794,
+                                                                    "text": "..."
+                                                                },
+                                                                "children": []
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "data": {
+                                                    "id": "chafbr4r6lk0",
+                                                    "created": 1642673976870,
+                                                    "text": "c"
+                                                },
+                                                "children": [
+                                                    {
+                                                        "data": {
+                                                            "id": "chafv0skmjc0",
+                                                            "created": 1642675486820,
+                                                            "text": "..."
+                                                        },
+                                                        "children": []
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "data": {
+                            "id": "chaf7yq8vv40",
+                            "created": 1642673679950,
+                            "text": "D",
+                            "layout": null
+                        },
+                        "children": [
+                            {
+                                "data": {
+                                    "id": "chafuq510v40",
+                                    "created": 1642675463628,
+                                    "text": "..."
+                                },
+                                "children": []
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "data": {
+                    "id": "chaf5op802o0",
+                    "created": 1642673501392,
+                    "text": "性别相关",
+                    "layout": null
+                },
+                "children": [
+                    {
+                        "data": {
+                            "id": "chafv4c4n340",
+                            "created": 1642675494533,
+                            "text": "..."
+                        },
+                        "children": []
+                    }
+                ]
+            }
+        ]
+    },
+    "template": "right",
+    "theme": "fresh-green",
+    "version": "1.4.43"
+}
